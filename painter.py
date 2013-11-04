@@ -10,11 +10,13 @@ import sys
 import os
 import time
 import copy
+import math
 from collections import deque
 
 import numpy as np
 from scipy.spatial import Delaunay
 import triangle
+from skimage import measure
 
 
 # Some api in the chain is translating the keystrokes to this octal string
@@ -99,6 +101,7 @@ class Brush:
         self.triangles = []
         self.lastMouse = None
         self.stroke_over = False
+        self.contours = []
 
 
         deltaAngle = 2*np.pi/numSides
@@ -122,7 +125,7 @@ class Brush:
     def draw_stroke(self):
         glBegin(GL_QUADS)
         if self.stroke_over:
-            glColor3f(.5,.5,.5)
+            glColor3f(0.5,0.5,0.5)
         else:
             glColor3f(0,0,0)
 
@@ -133,14 +136,10 @@ class Brush:
         glEnd()
 
     def draw_triangles(self, flag):
-        glBegin(GL_TRIANGLES)
-
-        """
         for t in self.triangles:
+            glBegin(GL_TRIANGLES)
             t.draw()
-        """
-
-        glEnd()
+            glEnd()
 
         if flag:
             for t in self.triangles:
@@ -148,6 +147,7 @@ class Brush:
                 t.draw_color((1,0,0))
                 glEnd()
 
+            """
             glLineWidth(3.0)
             glBegin(GL_LINES)
             glColor3f(0,0,1)
@@ -156,16 +156,28 @@ class Brush:
 
             glEnd()
             glLineWidth(1.0)
+            """
 
             glPointSize(3.0)
             glBegin(GL_POINTS)
-            glColor3f(1,0.5,0)
+            glColor3f(0,0,1)
             for t in self.triangle_points:
-                glVertex2f(t.point[0], t.point[1])
+                glVertex2f(t[0], t[1])
 
             glEnd()
             glPointSize(1.0)
 
+    def draw_contours(self):
+        glPointSize(3.0)
+        glBegin(GL_POINTS)
+        glColor3f(1,0,0)
+        for c in self.contours:
+            for p in c:
+                #TODO CHANGE 480
+                glVertex2f(p[1], 480-p[0])
+
+        glEnd()
+        glPointSize(1.0)
 
     def new_stroke(self, mouse):
         self.triangles = []
@@ -179,9 +191,10 @@ class Brush:
         for p in self.brushPoints:
             count = count + 1
             point = (mouse.mouseX + p[0], mouse.mouseY + p[1])
-            self.addNotCoveredPoint(point, count==len(self.brushPoints))
+            #self.addNotCoveredPoint(point, count==len(self.brushPoints))
             points.append(point)
         self.currentQuads.append(points)
+        self.lastMouse = copy.deepcopy(mouse)
 
     def pointInQuad(self, p, quad):
         flag = 0
@@ -355,12 +368,14 @@ class Brush:
         if self.lastMouse != None:
             quad = []
 
+            """
             for i in range(len(self.brushPoints)):
                 nextI = (i + 1) % len(self.brushPoints)
                 x1 = self.brushPoints[i][0]
                 y1 = self.brushPoints[i][1]
                 point = (mouse.mouseX + x1, mouse.mouseY + y1)
                 self.addNotCoveredPoint(point, i == len(self.brushPoints)-1)
+            """
 
             for i in range(len(self.brushPoints)):
                 nextI = (i + 1) % len(self.brushPoints)
@@ -376,13 +391,16 @@ class Brush:
                 self.removeCoverdPoint(points)
 
             #TODO: Make this general for any poly brush
+            """
             points = []
             for i in range(len(self.brushPoints)):
                 points.append((mouse.mouseX + self.brushPoints[i][0], mouse.mouseY + self.brushPoints[i][1]))
             self.currentQuads.append(points)
             self.removeCoverdPoint(points)
+            """
 
         self.lastMouse = copy.deepcopy(mouse)
+
 
     def clear_stroke(self):
         self.stroke_over = True
@@ -404,6 +422,97 @@ class Brush:
         #self.triangle_points = []
         lines = []
 
+
+        values = glReadPixels(0, 0, width, width, GL_RGBA, GL_FLOAT)
+        rvalues = np.ones([height, width])
+        for i in range(height):
+            for j in range(width):
+                rvalues[i, j] = values[i, j, 0]
+        #print self.values.shape
+        self.contours = measure.find_contours(rvalues[:,:], .5)
+        self.triangle_points = []
+        """
+        lines = []
+        MAX_ANGLE_DEVIATION = math.pi*20.0/180.0
+        for c in self.contours:
+            if len(c) < 2:
+                continue
+            self.triangle_points.append(c[0])
+            last_p = c[0]
+            last_angle = None
+            first_angle = None
+            #TODO: REMOVE 480
+            self.triangle_points.append((last_p[1], 480-last_p[0]))
+            first_index = len(self.triangle_points)
+
+            #TODO: Check for closed
+            for p in c[1:-1]:
+                dy = p[1]-last_p[1]
+                dx = p[0]-last_p[0]
+                angle = math.atan2(dy, dx)
+                if first_angle == None:
+                    first_angle = angle
+                    last_angle = angle
+                else:
+                    if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                            (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                        first_angle = None
+                        last_angle = None
+                        self.triangle_points.append((p[1], 480-p[0]))
+                        index = len(self.triangle_points)
+                        lines.append([index - 1, index])
+                last_p = p
+            lines.append([len(self.triangle_points), first_index])
+        """
+        lines = []
+        MAX_ANGLE_DEVIATION = math.pi*5.0/180.0
+        print "size" + str(len(self.contours))
+        print self.contours
+        for c in self.contours:
+            if len(c) < 2:
+                continue
+            last_p = c[0]
+            last_angle = None
+            first_angle = None
+            #TODO: REMOVE 480
+            self.triangle_points.append((last_p[1], 480-last_p[0]))
+            first_index = len(self.triangle_points)
+
+            #TODO: Check for closed
+            for p in c[1:-1:5]:
+                dy = p[1]-last_p[1]
+                dx = p[0]-last_p[0]
+                angle = math.atan2(dy, dx)
+                if first_angle == None:
+                    first_angle = angle
+                    last_angle = angle
+                else:
+                    if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                            (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                        first_angle = None
+                        last_angle = None
+                        self.triangle_points.append((p[1], 480-p[0]))
+                        index = len(self.triangle_points)
+                        lines.append([index - 1, index])
+                last_p = p
+            lines.append([len(self.triangle_points), first_index])
+
+        print self.triangle_points
+
+
+
+
+
+
+
+        #print self.contours
+        #x, y = np.ogrid[-np.pi:np.pi:480j, -np.pi:np.pi:480j]
+        #self.values = np.sin(np.exp((np.sin(x)**3 + np.cos(y)**2)))
+        #print self.values.shape
+
+        # Find contours at a constant value of 0.8
+        #self.contours = measure.find_contours(self.values, 0.8)
+
         """
         lastT = None
         for t in self.triangle_points:
@@ -415,17 +524,24 @@ class Brush:
                     t.prev = lastT
                     lastT.next = t
             lastT = t
-        """
 
+        """
         array = np.empty([len(self.triangle_points), 2])
         i = 0
         for t in self.triangle_points:
-            if t.isValid:
-                array[i, 0] = int(t.point[0])
-                array[i, 1] = int(t.point[1])
-                i = i + 1
+            array[i, 0] = t[0]
+            array[i, 1] = t[1]
+            i = i + 1
 
-        A = dict(vertices = array[0:i]) #, segments = line_array)
+        line_array = np.empty([len(lines), 2])
+        i = 0
+        for l in lines:
+            line_array[i, 0] = l[0]
+            line_array[i, 1] = l[1]
+            i = i + 1
+        print line_array
+
+        A = dict(vertices = array[0:i], segments = line_array)
         delauny_points = array[triangle.triangulate (A)['triangles']]
         for t in delauny_points:
             sum_x = 0
@@ -487,13 +603,14 @@ class Painter:
             glEnd()
         """
 
-        self.brush.draw_cursor(self.mouse)
         if self.next_clear_stroke:
             self.brush.draw_stroke()
             self.brush.clear_stroke()
             self.next_clear_stroke = False
             glClear(GL_COLOR_BUFFER_BIT)
+        self.brush.draw_cursor(self.mouse)
         self.brush.draw_stroke()
+        self.brush.draw_contours()
         self.brush.draw_triangles(self.draw_outlines)
 
         glutSwapBuffers()
@@ -544,7 +661,7 @@ class Painter:
         if self.mouse.mouseDown:
             diffX = x - lastX
             diffY = y - lastY
-            if abs(diffX) + abs(diffY) > 50:
+            if abs(diffX) + abs(diffY) > 5:
                 self.brush.stamp (self.mouse)
                 lastX = x
                 lastY = y
