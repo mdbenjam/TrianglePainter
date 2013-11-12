@@ -608,11 +608,22 @@ class Brush:
         self.holes = holes_array
 
         A = dict(vertices = array, segments = line_array, holes = holes_array)
-        triangulation = triangle.triangulate(A, 'p q 40')
+        triangulation = triangle.triangulate(A, 'p')
         delauny_points = triangulation['vertices'][triangulation['triangles']]
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
         for p in triangulation['vertices']:
             self.composite_points.append(p)
+        array = np.empty([len(self.composite_points), 2])
+        i = 0
+        for t in self.composite_points:
+            array[i, 0] = t[0]
+            array[i, 1] = t[1]
+            i = i + 1
+
+        A = dict(vertices = array)
+        triangulation = triangle.triangulate(A)
+        delauny_points = array[triangulation['triangles']]
+        """
         for t in delauny_points:
             sum_x = 0
             sum_y = 0
@@ -624,6 +635,20 @@ class Brush:
             colors = glReadPixels(sum_x/3, 479 - sum_y/3, 1, 1, GL_RGBA, GL_FLOAT)
 
             self.triangles.append(Triangle(t, [[0,0,0],[0,0,0],[0,0,0]]))#[colors[0][0], colors[0][0], colors[0][0]]))
+        """
+        self.triangles = []
+        for t in delauny_points:
+            sum_x = 0
+            sum_y = 0
+            for p in t:
+                sum_x = sum_x + p[0]
+                sum_y = sum_y + p[1]
+
+            # TODO: ELIMINATE 480!
+            colors = glReadPixels(sum_x/3, 479 - sum_y/3, 1, 1, GL_RGBA, GL_FLOAT)
+
+            self.triangles.append(Triangle(t, [colors[0][0], colors[0][0], colors[0][0]]))
+
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.currentQuads))
@@ -705,6 +730,7 @@ class Painter:
 
         if self.next_clear_stroke:
             self.brush.draw_stroke()
+            self.brush.draw_triangles(self.draw_outlines)
             self.brush.clear_stroke()
             self.next_clear_stroke = False
             glClear(GL_COLOR_BUFFER_BIT)
