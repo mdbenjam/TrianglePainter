@@ -30,6 +30,8 @@ lastY = 0
 
 brushWidth = 10
 
+out_name = ""
+
 
 class Triangle:
     def __init__(self, points, colors):
@@ -102,6 +104,10 @@ class Brush:
         self.lastMouse = None
         self.stroke_over = False
         self.contours = []
+        self.boundary = None
+        self.arrayPoints = None
+        self.holes = None
+        self.composite_points = []
 
 
         deltaAngle = 2*np.pi/numSides
@@ -124,9 +130,7 @@ class Brush:
 
     def draw_stroke(self):
         glBegin(GL_QUADS)
-        if self.stroke_over:
-            glColor3f(0.5,0.5,0.5)
-        else:
+        if not self.stroke_over:
             glColor3f(0,0,0)
 
         for q in self.currentQuads:
@@ -136,17 +140,12 @@ class Brush:
         glEnd()
 
     def draw_triangles(self, flag):
+        glBegin(GL_TRIANGLES)
         for t in self.triangles:
-            glBegin(GL_TRIANGLES)
             t.draw()
-            glEnd()
+        glEnd()
 
         if flag:
-            for t in self.triangles:
-                glBegin(GL_LINE_LOOP)
-                t.draw_color((1,0,0))
-                glEnd()
-
             """
             glLineWidth(3.0)
             glBegin(GL_LINES)
@@ -158,6 +157,13 @@ class Brush:
             glLineWidth(1.0)
             """
 
+            for t in self.triangles:
+                glBegin(GL_LINE_LOOP)
+                t.draw_color((1,0,0))
+                glEnd()
+
+
+
             glPointSize(3.0)
             glBegin(GL_POINTS)
             glColor3f(0,0,1)
@@ -166,6 +172,36 @@ class Brush:
 
             glEnd()
             glPointSize(1.0)
+
+            glPointSize(3.0)
+            glBegin(GL_POINTS)
+            glColor3f(1,0,1)
+            for h in self.holes:
+                glVertex2f(h[0], h[1])
+            glEnd()
+            glPointSize(1.0)
+
+            """
+            glPointSize(3.0)
+            glBegin(GL_POINTS)
+            glColor3f(0,0,1)
+            for p in self.arrayPoints:
+                glVertex2f(p[0], p[1])
+            glEnd()
+            glPointSize(1.0)
+
+            glLineWidth(3.0)
+            glBegin(GL_LINES)
+            glColor3f(1,0,0)
+            for b in self.boundary:
+                p1 = self.arrayPoints[b[0]]
+                p2 = self.arrayPoints[b[1]]
+                glVertex2f(p1[0], p1[1])
+                glVertex2f(p2[0], p2[1])
+
+            glEnd()
+            glLineWidth(1.0)
+            """
 
     def draw_contours(self):
         glPointSize(3.0)
@@ -180,7 +216,7 @@ class Brush:
         glPointSize(1.0)
 
     def new_stroke(self, mouse):
-        self.triangles = []
+        #self.triangles = []
         self.triangle_points = []
         self.last_points = deque([])
         self.currentQuads = []
@@ -465,44 +501,60 @@ class Brush:
             lines.append([len(self.triangle_points), first_index])
         """
         lines = []
+        holes = []
         MAX_ANGLE_DEVIATION = math.pi*5.0/180.0
-        print "size" + str(len(self.contours))
-        print self.contours
         for c in self.contours:
             if len(c) < 2:
                 continue
             last_p = c[0]
+
+            r = .5
+            contour_hole = False
+
             last_angle = None
             first_angle = None
             #TODO: REMOVE 480
             self.triangle_points.append((last_p[1], 480-last_p[0]))
-            first_index = len(self.triangle_points)
+            first_index = len(self.triangle_points)-1
 
             #TODO: Check for closed
-            for p in c[1:-1:5]:
-                dy = p[1]-last_p[1]
-                dx = p[0]-last_p[0]
-                angle = math.atan2(dy, dx)
-                if first_angle == None:
-                    first_angle = angle
-                    last_angle = angle
-                else:
-                    if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
-                            (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
-                        first_angle = None
-                        last_angle = None
-                        self.triangle_points.append((p[1], 480-p[0]))
-                        index = len(self.triangle_points)
-                        lines.append([index - 1, index])
-                last_p = p
-            lines.append([len(self.triangle_points), first_index])
+            USE_EVERY = 5
+            current_count = 0
+            last_points = []
+            for p in c[1:-1]:
 
-        print self.triangle_points
+                current_count = current_count + 1
+                last_points.append(p)
+                if current_count >= 5:
+                    dy = p[1]-last_p[1]
+                    dx = p[0]-last_p[0]
+                    angle = math.atan2(dy, dx)
+                    if first_angle == None:
+                        first_angle = angle
+                        last_angle = angle
+                    else:
+                        if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                                (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                            for p2 in last_points[::2]:
+                                dy = p2[1]-last_p[1]
+                                dx = p2[0]-last_p[0]
+                                angle = math.atan2(dy, dx)
+                                if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                                        (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                                    self.triangle_points.append((p2[1], 480-p2[0]))
+                                    index = len(self.triangle_points)-1
+                                    lines.append([index - 1, index])
+                                    if contour_hole == False:
+                                        print "sin "+str(math.sin(angle-math.pi/2.0))
+                                        holes.append([(last_p[1]+p2[1])/2.0+math.sin(angle-math.pi/2.0)*r, 480-((last_p[0]+p2[0])/2.0+math.cos(angle-math.pi/2.0)*r)])
+                                        contour_hole = True
 
-
-
-
-
+                            first_angle = None
+                            last_angle = None
+                    last_p = p
+                    current_count = 0
+                    last_points = []
+            lines.append([len(self.triangle_points)-1, first_index])
 
 
         #print self.contours
@@ -526,12 +578,6 @@ class Brush:
             lastT = t
 
         """
-        array = np.empty([len(self.triangle_points), 2])
-        i = 0
-        for t in self.triangle_points:
-            array[i, 0] = t[0]
-            array[i, 1] = t[1]
-            i = i + 1
 
         line_array = np.empty([len(lines), 2])
         i = 0
@@ -539,10 +585,34 @@ class Brush:
             line_array[i, 0] = l[0]
             line_array[i, 1] = l[1]
             i = i + 1
-        print line_array
 
-        A = dict(vertices = array[0:i], segments = line_array)
-        delauny_points = array[triangle.triangulate (A)['triangles']]
+
+        holes_array = np.empty([len(holes), 2])
+        i = 0
+        for h in holes:
+            holes_array[i, 0] = h[0]
+            holes_array[i, 1] = h[1]
+            i = i + 1
+
+        array = np.empty([len(self.triangle_points), 2])
+        i = 0
+        for t in self.triangle_points:
+            array[i, 0] = t[0]
+            array[i, 1] = t[1]
+            i = i + 1
+
+        self.boundary = line_array
+        self.arrayPoints = array
+
+        print holes_array
+        self.holes = holes_array
+
+        A = dict(vertices = array, segments = line_array, holes = holes_array)
+        triangulation = triangle.triangulate(A, 'p q 40')
+        delauny_points = triangulation['vertices'][triangulation['triangles']]
+        #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
+        for p in triangulation['vertices']:
+            self.composite_points.append(p)
         for t in delauny_points:
             sum_x = 0
             sum_y = 0
@@ -553,9 +623,39 @@ class Brush:
             # TODO: ELIMINATE 480!
             colors = glReadPixels(sum_x/3, 479 - sum_y/3, 1, 1, GL_RGBA, GL_FLOAT)
 
-            self.triangles.append(Triangle(t, [colors[0][0], colors[0][0], colors[0][0]]))
+            self.triangles.append(Triangle(t, [[0,0,0],[0,0,0],[0,0,0]]))#[colors[0][0], colors[0][0], colors[0][0]]))
+
+        print "tri: " + str(len(self.triangles))
+        print "quad: " + str(len(self.currentQuads))
 
 
+    def save(self, f):
+        for q in self.currentQuads:
+            for p in q:
+                f.write(str(p[0])+':'+str(p[1])+', ')
+            f.write('\n')
+
+    def load(self, f):
+        self.currentQuads = []
+        self.triangles = []
+        for l in f:
+            s = l.split(',')
+            points = []
+            count = 0
+            for p in s:
+                count = count + 1
+                if count > 4:
+                    break
+                i = p.split(':')
+                print i
+                points.append((float(i[0]), float(i[1])))
+            self.currentQuads.append(points)
+
+        glClear(GL_COLOR_BUFFER_BIT)
+        self.stroke_over = False
+        self.draw_stroke()
+        self.clear_stroke()
+        self.stroke_over = True
 
 class Painter:
 
@@ -610,7 +710,7 @@ class Painter:
             glClear(GL_COLOR_BUFFER_BIT)
         self.brush.draw_cursor(self.mouse)
         self.brush.draw_stroke()
-        self.brush.draw_contours()
+        #self.brush.draw_contours()
         self.brush.draw_triangles(self.draw_outlines)
 
         glutSwapBuffers()
@@ -621,6 +721,15 @@ class Painter:
         if args[0] == ESCAPE:
             glutDestroyWindow(window)
             sys.exit()
+        if args[0] == 'a':
+            if os.path.exists(out_name):
+                f = open(out_name, 'r')
+                self.brush.load(f)
+                f.close()
+            else:
+                f = open(out_name, 'w')
+                self.brush.save(f)
+                f.close()
 
     # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)  
     def mousePressed(self, button, state, x, y):
@@ -641,6 +750,9 @@ class Painter:
         if button == GLUT_RIGHT_BUTTON:
             if(state == GLUT_DOWN):
                 self.draw_outlines = not self.draw_outlines
+
+
+
 
     def removelines(self, points, lines, removeNumber):
         points = np.delete(points, removeNumber)
@@ -670,12 +782,15 @@ class Painter:
 
 def main():
     global window
+    global out_name
     painter = Painter()
 
     glutInit(())
 
     window_width = 640
     window_height = 480
+
+    out_name = "out1.txt"#raw_input("FileName: ")
 
     # Select type of Display mode:   
     #  Double buffer 
