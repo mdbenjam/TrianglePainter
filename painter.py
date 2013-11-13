@@ -40,11 +40,12 @@ class Mouse:
         self.mouseX = 0
         self.mouseY = 0
         self.mouseDown = False
+
 class Painter:
 
     def __init__(self):
         self.mouse = Mouse()
-        self.brush = brush.Brush(50, 4)
+        self.brush = brush.Brush(50, 4, (0,0,1,1))
         self.next_clear_stroke = False
         self.draw_outlines = False
 
@@ -90,10 +91,10 @@ class Painter:
             self.brush.clear_stroke()
             self.next_clear_stroke = False
 
+        self.brush.draw_triangles(self.draw_outlines)
         self.brush.draw_cursor(self.mouse)
         self.brush.draw_stroke()
         #self.brush.draw_contours()
-        self.brush.draw_triangles(self.draw_outlines)
 
         glutSwapBuffers()
 
@@ -112,6 +113,14 @@ class Painter:
                 f = open(out_name, 'w')
                 self.brush.save(f)
                 f.close()
+        if args[0] == 'r':
+            self.brush.change_color((1,0,0,1))
+        if args[0] == 'g':
+            self.brush.change_color((0,1,0,1))
+        if args[0] == 'b':
+            self.brush.change_color((0,0,1,1))
+        if args[0] == 'l':
+            self.brush.change_color((0,0,0,1))
 
     # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)  
     def mousePressed(self, button, state, x, y):

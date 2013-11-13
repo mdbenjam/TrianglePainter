@@ -12,7 +12,7 @@ import geometry
 
 class Brush:
 
-    def __init__(self, brushRadius, numSides):
+    def __init__(self, brushRadius, numSides, color=(0,0,0,1)):
         self.triangle_points = []
         self.last_points = deque([])
         self.last_removed = None
@@ -24,8 +24,10 @@ class Brush:
         self.arrayPoints = None
         self.holes = None
         self.composite_points = []
+        self.composite_lines = []
         self.brushPoints = []
         self.current_quads = []
+        self.color = color
 
 
         deltaAngle = 2*np.pi/numSides
@@ -37,19 +39,24 @@ class Brush:
             self.brushPoints.append((np.cos(angle)*brushRadius, np.sin(angle)*brushRadius))
             angle = angle + deltaAngle
 
+    def change_color(self,color):
+        self.color = color
+
     def draw_cursor(self, mouse):
         glBegin(GL_POLYGON)
-        glColor3f(0,0,0)
+        glColor4f(self.color[0], self.color[1], self.color[2], self.color[3])
 
         for p in self.brushPoints:
             glVertex2f(mouse.mouseX + p[0], mouse.mouseY + p[1])
 
         glEnd()
 
-    def draw_stroke(self):
+    def draw_stroke(self, black=False):
         glBegin(GL_QUADS)
-        if not self.stroke_over:
-            glColor3f(0,0,0)
+        if black:
+            glColor4f(0,0,0,1)
+        else:
+            glColor4f(self.color[0], self.color[1], self.color[2], self.color[3])
 
         for q in self.current_quads:
             for p in q:
@@ -198,7 +205,7 @@ class Brush:
         #TODO: REMOVE 480
         #glViewport(0, 0, 640, 480)
         glClear(GL_COLOR_BUFFER_BIT)
-        self.draw_stroke()
+        self.draw_stroke(black=True)
 
         width = 640
         height = 480
@@ -283,11 +290,37 @@ class Brush:
             USE_EVERY = 5
             current_count = 0
             last_points = []
+            last_five_points = []
+
             for p in c[1:-1]:
 
                 current_count = current_count + 1
                 last_points.append(p)
-                if current_count >= 5:
+                last_five_points.append(p)
+                n = np.array([last_p[0]-p[0], last_p[1]-p[1]])
+                n = n/np.linalg.norm(n)
+                line_test_failed = False
+                DIST_THRESHOLD = .2
+                for p2 in last_points:
+                    vec_to_p = np.array([p[0]-p2[0], p[1]-p2[1]])
+                    if np.linalg.norm(vec_to_p-(np.dot(vec_to_p,n)*n)) > DIST_THRESHOLD:
+                        line_test_failed = True
+
+                """
+                if line_test_failed:
+                    print "Line Failed"
+                    self.triangle_points.append((last_points[-1][0], 480-last_points[-1][1]))
+                    index = len(self.triangle_points)-1
+                    lines.append([index - 1, index])
+                    first_angle = None
+                    last_angle = None
+                    last_p = last_points[-1]
+                    current_count = 0
+                    last_five_points = []
+                    last_points = []
+                """
+
+                if current_count >= USE_EVERY:
                     dy = p[1]-last_p[1]
                     dx = p[0]-last_p[0]
                     angle = math.atan2(dy, dx)
@@ -297,7 +330,7 @@ class Brush:
                     else:
                         if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
                                 (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
-                            for p2 in last_points[::2]:
+                            for p2 in last_five_points[::2]:
                                 dy = p2[1]-last_p[1]
                                 dx = p2[0]-last_p[0]
                                 angle = math.atan2(dy, dx)
@@ -307,7 +340,6 @@ class Brush:
                                     index = len(self.triangle_points)-1
                                     lines.append([index - 1, index])
                                     if contour_hole == False:
-                                        print "sin "+str(math.sin(angle-math.pi/2.0))
                                         holes.append([(last_p[1]+p2[1])/2.0+math.sin(angle-math.pi/2.0)*r, 480-((last_p[0]+p2[0])/2.0+math.cos(angle-math.pi/2.0)*r)])
                                         contour_hole = True
 
@@ -315,6 +347,7 @@ class Brush:
                             last_angle = None
                     last_p = p
                     current_count = 0
+                    last_five_points = []
                     last_points = []
             lines.append([len(self.triangle_points)-1, first_index])
 
@@ -366,25 +399,22 @@ class Brush:
         self.boundary = line_array
         self.arrayPoints = array
 
-        print holes_array
         self.holes = holes_array
 
         A = dict(vertices = array, segments = line_array, holes = holes_array)
         triangulation = triangle.triangulate(A, 'p')
         delauny_points = triangulation['vertices'][triangulation['triangles']]
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
-        for t in delauny_points:
-            sum_x = 0
-            sum_y = 0
-            for p in t:
-                sum_x = sum_x + p[0]
-                sum_y = sum_y + p[1]
-            # TODO: ELIMINATE 480!
-            colors = glReadPixels(sum_x/3, 479 - sum_y/3, 1, 1, GL_RGBA, GL_FLOAT)
-            print colors[0][0]
 
-            for p in t:
-                self.composite_points.append(geometry.TrianglePoint(p,colors[0][0]))
+        starting_value = len(self.composite_points)
+        for p in self.triangle_points:
+            # TODO: ELIMINATE 480!
+            colors = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)
+
+            self.composite_points.append(geometry.TrianglePoint(p,(0,0,0,0)))#colors[0][0]))
+
+        for l in lines:
+            self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
 
         verts = np.empty([len(self.composite_points), 2])
         colors = np.empty([len(self.composite_points), 4])
@@ -398,10 +428,18 @@ class Brush:
             colors[i, 3] = t.color[3]
             i = i + 1
 
-        A = dict(vertices = verts)
-        triangulation = triangle.triangulate(A)
-        delauny_points = verts[triangulation['triangles']]
-        delauny_colors = colors[triangulation['triangles']]
+
+
+        line_array = np.empty([len(self.composite_lines), 2])
+        i = 0
+        for l in self.composite_lines:
+            line_array[i, 0] = l[0]
+            line_array[i, 1] = l[1]
+            i = i + 1
+
+        A = dict(vertices = verts, segments = line_array, holes = [0, 0])
+        triangulation = triangle.triangulate(A, 'p')
+        delauny_points = triangulation['vertices'][triangulation['triangles']]
         """
         for t in delauny_points:
             sum_x = 0
@@ -415,9 +453,12 @@ class Brush:
 
             self.triangles.append(Triangle(t, [[0,0,0],[0,0,0],[0,0,0]]))#[colors[0][0], colors[0][0], colors[0][0]]))
         """
+
+        glClear(GL_COLOR_BUFFER_BIT)
+        self.draw_triangles(False)
+        self.draw_stroke()
         self.triangles = []
-        print "Here1"
-        for t, tc in zip(delauny_points,delauny_colors):
+        for t in delauny_points:
             sum_x = 0
             sum_y = 0
             for p in t:
@@ -426,16 +467,19 @@ class Brush:
 
 
             # TODO: ELIMINATE 480!
-            colors = glReadPixels(sum_x/3, 479 - sum_y/3, 1, 1, GL_RGBA, GL_FLOAT)
+            colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
             tri = []
-            for p, c in zip(t,tc):
-                tri.append(geometry.TrianglePoint(p,c))
+            for p in t:
+                tri.append(geometry.TrianglePoint(p,colors[0][0]))
+
 
             self.triangles.append(geometry.Triangle(tri))
 
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))
+
+        self.current_quads = []
 
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
