@@ -45,7 +45,7 @@ class Painter:
 
     def __init__(self):
         self.mouse = Mouse()
-        self.brush = brush.Brush(50, 4, (0,0,1,1))
+        self.brush = brush.Brush(5, 4, (0,0,1,1))
         self.next_clear_stroke = False
         self.draw_outlines = False
 
@@ -104,15 +104,24 @@ class Painter:
         if args[0] == ESCAPE:
             glutDestroyWindow(window)
             sys.exit()
-        if args[0] == 'a':
+        if args[0] == 'o':
+            out_name = raw_input('Open File: ')
             if os.path.exists(out_name):
-                f = open(out_name, 'r')
-                self.brush.load(f)
-                f.close()
-            else:
-                f = open(out_name, 'w')
-                self.brush.save(f)
-                f.close()
+                self.brush.load(out_name)
+        if args[0] == 's':
+            out_name = raw_input('Save File: ')
+            self.brush.save(out_name)
+
+        if args[0] == 'a':
+            out_name = 'last_stroke.txt'
+            if os.path.exists(out_name):
+                self.brush.load(out_name)
+
+        if args[0] == ']':
+            self.brush.set_size(self.brush.get_size()+5)
+        if args[0] == '[':
+            self.brush.set_size(self.brush.get_size()-5)
+
         if args[0] == 'r':
             self.brush.change_color((1,0,0,1))
         if args[0] == 'g':
@@ -181,7 +190,7 @@ def main():
     window_height = 480
     window_params = Window(window_width, window_height)
 
-    out_name = "out1.txt"#raw_input("FileName: ")
+    out_name = "last_stroke.txt"#raw_input("FileName: ")
 
     # Select type of Display mode:   
     #  Double buffer 

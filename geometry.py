@@ -3,8 +3,11 @@ __author__ = 'mdbenjam'
 from OpenGL.GL import *
 
 class Triangle:
-    def __init__(self, points):
-        self.points = points
+    def __init__(self, points=None,file=None):
+        if file == None:
+            self.points = points
+        else:
+            self.load(file)
 
     def draw(self):
         for p in self.points:
@@ -16,13 +19,39 @@ class Triangle:
             glColor3f(color[0], color[1], color[2])
             glVertex2f(p.point[0], p.point[1])
 
+    def save(self, f):
+        for p in self.points:
+            p.save(f)
+
+    def load(self, f):
+        self.points = []
+        for i in range(3):
+            self.points.append(TrianglePoint(file=f))
 
 class TrianglePoint:
-    def __init__(self, point, color):
-        self.point = point
-        self.color = color
-        assert(len(color)==4)
+    def __init__(self, point=None, color=None, file=None):
+        if file == None:
+            self.point = point
+            self.color = color
+        else:
+            self.load(file)
 
+    def save(self, f):
+        f.write(str(self.point[0])+','+str(self.point[1]))
+        f.write(':')
+        f.write(str(self.color[0])+','+
+                    str(self.color[1])+','+
+                    str(self.color[2])+','+
+                    str(self.color[3]))
+        f.write('\n')
+
+    def load(self, f):
+        line = f.readline()
+        s = line.split(':')
+        point = s[0].split(',')
+        color = s[1].split(',')
+        self.point = [float(point[0]), float(point[1])]
+        self.color = [float(color[0]), float(color[1]), float(color[2]), float(color[3])]
 
 def pointInQuad(self, p, quad):
     flag = 0

@@ -12,7 +12,7 @@ import geometry
 
 class Brush:
 
-    def __init__(self, brushRadius, numSides, color=(0,0,0,1)):
+    def __init__(self, brush_radius, num_sides, color=(0,0,0,1)):
         self.triangle_points = []
         self.last_points = deque([])
         self.last_removed = None
@@ -28,19 +28,32 @@ class Brush:
         self.brushPoints = []
         self.current_quads = []
         self.color = color
+        self.brush_radius = brush_radius
+        self.num_sides = num_sides
+
+        self.make_brush()
 
 
-        deltaAngle = 2*np.pi/numSides
+    def make_brush(self):
+        self.brushPoints = []
+        deltaAngle = 2*np.pi/self.num_sides
         angle = np.pi/4.0
-        if numSides % 2 == 1:
+        if self.num_sides % 2 == 1:
             angle = -np.pi/2.0
 
-        for i in range(numSides):
-            self.brushPoints.append((np.cos(angle)*brushRadius, np.sin(angle)*brushRadius))
+        for i in range(self.num_sides):
+            self.brushPoints.append((np.cos(angle)*self.brush_radius, np.sin(angle)*self.brush_radius))
             angle = angle + deltaAngle
 
     def change_color(self,color):
         self.color = color
+
+    def get_size(self):
+        return self.brush_radius
+
+    def set_size(self, brush_radius):
+        self.brush_radius = brush_radius
+        self.make_brush()
 
     def draw_cursor(self, mouse):
         glBegin(GL_POLYGON)
@@ -271,7 +284,8 @@ class Brush:
         """
         lines = []
         holes = []
-        MAX_ANGLE_DEVIATION = math.pi*5.0/180.0
+        MAX_ANGLE_DEVIATION = math.pi*25.0/180.0
+        DIST_THRESHOLD = .5
         for c in self.contours:
             if len(c) < 2:
                 continue
@@ -300,16 +314,14 @@ class Brush:
                 n = np.array([last_p[0]-p[0], last_p[1]-p[1]])
                 n = n/np.linalg.norm(n)
                 line_test_failed = False
-                DIST_THRESHOLD = .2
                 for p2 in last_points:
                     vec_to_p = np.array([p[0]-p2[0], p[1]-p2[1]])
                     if np.linalg.norm(vec_to_p-(np.dot(vec_to_p,n)*n)) > DIST_THRESHOLD:
                         line_test_failed = True
 
-                """
+
                 if line_test_failed:
-                    print "Line Failed"
-                    self.triangle_points.append((last_points[-1][0], 480-last_points[-1][1]))
+                    self.triangle_points.append((last_points[-1][1], 480-last_points[-1][0]))
                     index = len(self.triangle_points)-1
                     lines.append([index - 1, index])
                     first_angle = None
@@ -318,7 +330,7 @@ class Brush:
                     current_count = 0
                     last_five_points = []
                     last_points = []
-                """
+
 
                 if current_count >= USE_EVERY:
                     dy = p[1]-last_p[1]
@@ -401,9 +413,11 @@ class Brush:
 
         self.holes = holes_array
 
+        """
         A = dict(vertices = array, segments = line_array, holes = holes_array)
         triangulation = triangle.triangulate(A, 'p')
         delauny_points = triangulation['vertices'][triangulation['triangles']]
+        """
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
 
         starting_value = len(self.composite_points)
@@ -438,7 +452,7 @@ class Brush:
             i = i + 1
 
         A = dict(vertices = verts, segments = line_array, holes = [0, 0])
-        triangulation = triangle.triangulate(A, 'p')
+        triangulation = triangle.triangulate(A, 'p q ')
         delauny_points = triangulation['vertices'][triangulation['triangles']]
         """
         for t in delauny_points:
@@ -481,33 +495,47 @@ class Brush:
 
         self.current_quads = []
 
+        self.save('last_stroke.txt')
+
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
 
-    def save(self, f):
-        for q in self.current_quads:
-            for p in q:
-                f.write(str(p[0])+':'+str(p[1])+', ')
-            f.write('\n')
+    def save(self, out_name):
 
-    def load(self, f):
-        self.current_quads = []
+        f = open(out_name, 'w')
+        f.write(str(len(self.composite_points))+'\n')
+        for p in self.composite_points:
+            p.save(f)
+
+        f.write(str(len(self.composite_lines))+'\n')
+        for l in self.composite_lines:
+            f.write(str(l[0])+','+str(l[1])+'\n')
+
+        f.write(str(len(self.triangles))+'\n')
+        for t in self.triangles:
+            t.save(f)
+        f.close()
+
+    def load(self, in_name):
+        f = open(in_name, 'r')
+        self.composite_points = []
+        self.composite_lines = []
         self.triangles = []
-        for l in f:
-            s = l.split(',')
-            points = []
-            count = 0
-            for p in s:
-                count = count + 1
-                if count > 4:
-                    break
-                i = p.split(':')
-                print i
-                points.append((float(i[0]), float(i[1])))
-            self.current_quads.append(points)
+        num_points = int(f.readline())
+        for i in range(num_points):
+            self.composite_points.append(geometry.TrianglePoint(file=f))
 
-        glClear(GL_COLOR_BUFFER_BIT)
+        num_lines = int(f.readline())
+        for i in range(num_lines):
+            line = f.readline()
+            s = line.split(',')
+            self.composite_lines.append([int(s[0]),int(s[1])])
+
+        num_triangles = int(f.readline())
+        for i in range(num_triangles):
+            self.triangles.append(geometry.Triangle(file=f))
+
         self.stroke_over = False
-        self.draw_stroke()
         self.clear_stroke()
         self.stroke_over = True
+        f.close()
