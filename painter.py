@@ -45,7 +45,7 @@ class Painter:
 
     def __init__(self):
         self.mouse = Mouse()
-        self.brush = brush.Brush(5, 4, (0,0,1,1))
+        self.brush = brush.Brush(50, 4, (0,0,1,0.5))
         self.next_clear_stroke = False
         self.draw_outlines = False
 
@@ -61,6 +61,8 @@ class Painter:
     def init(self):
         glDisable(GL_DEPTH_TEST)
         glutSetCursor(GLUT_CURSOR_NONE)
+        glEnable (GL_BLEND)
+        glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glClearColor(1.0, 1.0, 1.0, 1.0)
 
     def draw_triangles(self):
@@ -123,13 +125,13 @@ class Painter:
             self.brush.set_size(self.brush.get_size()-5)
 
         if args[0] == 'r':
-            self.brush.change_color((1,0,0,1))
+            self.brush.change_color((1,0,0,0.5))
         if args[0] == 'g':
-            self.brush.change_color((0,1,0,1))
+            self.brush.change_color((0,1,0,0.5))
         if args[0] == 'b':
-            self.brush.change_color((0,0,1,1))
+            self.brush.change_color((0,0,1,0.5))
         if args[0] == 'l':
-            self.brush.change_color((0,0,0,1))
+            self.brush.change_color((0,0,0,0.5))
 
     # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)  
     def mousePressed(self, button, state, x, y):

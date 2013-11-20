@@ -11,7 +11,7 @@ class Triangle:
 
     def draw(self):
         for p in self.points:
-            glColor3f(p.color[0], p.color[1], p.color[2])
+            glColor3f(p.composite[0], p.composite[1], p.composite[2])
             glVertex2f(p.point[0], p.point[1])
 
     def draw_color(self, color):
@@ -29,20 +29,42 @@ class Triangle:
             self.points.append(TrianglePoint(file=f))
 
 class TrianglePoint:
-    def __init__(self, point=None, color=None, file=None):
+    def __init__(self, point=None, colors=None, file=None):
         if file == None:
             self.point = point
-            self.color = color
+            self.colors = colors
+            self.composite = self.composite_colors()
         else:
             self.load(file)
+
+    def composite_colors(self):
+        final_color = [1, 1, 1, 1]
+        for c in self.colors:
+            alpha2 = c[3]
+            for i in range(3):
+                final_color[i] = final_color[i]*(1-alpha2) + c[i]*alpha2
+        final_color[3] = 1
+        return final_color
+
+    def consolidate(self):
+        #hold = self.colors.pop()
+        consolidate = self.composite_colors()
+        self.colors = []
+        self.colors.append(consolidate)
+        #self.colors.append(hold)
+
+    def add_color(self, color):
+        self.colors.append(color)
+        self.composite = self.composite_colors()
+
 
     def save(self, f):
         f.write(str(self.point[0])+','+str(self.point[1]))
         f.write(':')
-        f.write(str(self.color[0])+','+
-                    str(self.color[1])+','+
-                    str(self.color[2])+','+
-                    str(self.color[3]))
+        f.write(str(self.colors[0, 0])+','+
+                    str(self.colors[0, 1])+','+
+                    str(self.colors[0, 2])+','+
+                    str(self.colors[0, 3]))
         f.write('\n')
 
     def load(self, f):
@@ -51,7 +73,8 @@ class TrianglePoint:
         point = s[0].split(',')
         color = s[1].split(',')
         self.point = [float(point[0]), float(point[1])]
-        self.color = [float(color[0]), float(color[1]), float(color[2]), float(color[3])]
+        self.colors = []
+        self.colors.append([float(color[0]), float(color[1]), float(color[2]), float(color[3])])
 
 def pointInQuad(self, p, quad):
     flag = 0

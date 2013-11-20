@@ -364,6 +364,12 @@ class Brush:
             lines.append([len(self.triangle_points)-1, first_index])
 
 
+        for p in self.composite_points:
+            pixel_color = glReadPixels(p.point[0], 479 - p.point[1], 1, 1, GL_RGBA, GL_FLOAT)
+            p.consolidate()
+            if pixel_color[0][0][0] == 0:
+                p.add_color(self.color)
+
         #print self.contours
         #x, y = np.ogrid[-np.pi:np.pi:480j, -np.pi:np.pi:480j]
         #self.values = np.sin(np.exp((np.sin(x)**3 + np.cos(y)**2)))
@@ -421,25 +427,26 @@ class Brush:
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
 
         starting_value = len(self.composite_points)
-        for p in self.triangle_points:
-            # TODO: ELIMINATE 480!
-            colors = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)
 
-            self.composite_points.append(geometry.TrianglePoint(p,(0,0,0,0)))#colors[0][0]))
+        glClear(GL_COLOR_BUFFER_BIT)
+        self.draw_triangles(False)
+
+        for p in self.triangle_points:
+            color = []
+            pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)
+            color.append(pixel_color[0][0])
+            color.append(self.color)
+            self.composite_points.append(geometry.TrianglePoint(p,color))
 
         for l in lines:
             self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
 
         verts = np.empty([len(self.composite_points), 2])
-        colors = np.empty([len(self.composite_points), 4])
         i = 0
         for t in self.composite_points:
             verts[i, 0] = t.point[0]
             verts[i, 1] = t.point[1]
-            colors[i, 0] = t.color[0]
-            colors[i, 1] = t.color[1]
-            colors[i, 2] = t.color[2]
-            colors[i, 3] = t.color[3]
+
             i = i + 1
 
 
@@ -452,8 +459,11 @@ class Brush:
             i = i + 1
 
         A = dict(vertices = verts, segments = line_array, holes = [0, 0])
-        triangulation = triangle.triangulate(A, 'p q ')
-        delauny_points = triangulation['vertices'][triangulation['triangles']]
+        triangulation = triangle.triangulate(A, 'p')
+        tri_indicies = triangulation['triangles']
+        delauny_points = triangulation['vertices']
+        segments = triangulation['segments']
+
         """
         for t in delauny_points:
             sum_x = 0
@@ -468,23 +478,108 @@ class Brush:
             self.triangles.append(Triangle(t, [[0,0,0],[0,0,0],[0,0,0]]))#[colors[0][0], colors[0][0], colors[0][0]]))
         """
 
-        glClear(GL_COLOR_BUFFER_BIT)
-        self.draw_triangles(False)
-        self.draw_stroke()
+
+        #self.draw_stroke()
         self.triangles = []
-        for t in delauny_points:
+        for indices in tri_indicies:
+            t = delauny_points[indices]
             sum_x = 0
             sum_y = 0
             for p in t:
                 sum_x = sum_x + p[0]
                 sum_y = sum_y + p[1]
 
+            c_lists = []
+            for i in indices:
+                if i < len(self.composite_points):
+                    c_lists.append(np.array(self.composite_points[i].colors))
+                else:
+                    c_lists.append(np.array([[-1, -1, -1, -1]]))
+            i = [0, 0, 0]
+            final_color = [[1, 1, 1, 1]]
 
-            # TODO: ELIMINATE 480!
-            colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
+            for i[0] in c_lists[0]:
+                for i[1] in c_lists[1]:
+                    for i[2] in c_lists[2]:
+                        points = 0
+                        col = [0, 0, 0, 0]
+                        if np.all(abs(i[0] - i[1]) < 0.01):
+                            points = points + 1
+                        if np.all(abs(i[1] - i[2]) < 0.01):
+                            points = points + 1
+                        if np.all(abs(i[2] - i[0]) < 0.01):
+                            points = points + 1
+
+                        if i[0][0] == -1:
+                            points = points + 1
+                        else:
+                            col = i[0]
+                        if i[1][0] == -1:
+                            points = points + 1
+                        else:
+                            col = i[1]
+                        if i[2][0] == -1:
+                            points = points + 1
+                        else:
+                            col = i[2]
+                        if points > 1:
+                            final_color.append(col)
+
+            if final_color[0] == [1, 1, 1, 1]:
+                print c_lists
+            #while i[0] < len(c_lists[0]) or i[1] < len(c_lists[1]) or i[2] < len(c_lists[2]):
+            #    c_lists[i[0]]
+            """
+            for i in indices:
+                if i < len(colors):
+                    pixel_color = glReadPixels(delauny_points[i, 0, 0], 479 - delauny_points[i, 0, 1], 1, 1, GL_RGBA, GL_FLOAT)
+                    color.append(pixel_color[0][0])
+
+            color.append(self.color)
+            #colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
+            if np.all(c[0] == c[1]):
+                if c[0][0] == -1:
+                    color = c[2]
+                else:
+                    color = c[0]
+            elif np.all(c[0] == c[2]):
+                if c[0][0] == -1:
+                    color = c[1]
+                else:
+                    color = c[0]
+            elif np.all(c[1] == c[2]):
+                if c[1][0] == -1:
+                    color = c[0]
+                else:
+                    color = c[1]
+            else:
+                index = 0
+                if c[0][0] == -1:
+                    index = 0
+                if c[1][0] == -1:
+                    index = 1
+                if c[2][0] == -1:
+                    index = 2
+                other1 = (index + 1) % 3
+                other2 = (index + 2) % 3
+                for s in segments:
+                    if s[0] == indices[index]:
+                        if s[1] == indices[other1]:
+                            color = c[other2]
+                        else:
+                            color = c[other1]
+                    else:
+                        if s[0] == indices[other1]:
+                            color = c[other2]
+                        else:
+                            color = c[other1]
+            """
+
+
+            #colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
             tri = []
             for p in t:
-                tri.append(geometry.TrianglePoint(p,colors[0][0]))
+                tri.append(geometry.TrianglePoint(p,final_color))
 
 
             self.triangles.append(geometry.Triangle(tri))
@@ -494,8 +589,7 @@ class Brush:
         print "quad: " + str(len(self.current_quads))
 
         self.current_quads = []
-
-        self.save('last_stroke.txt')
+        #self.save('last_stroke.txt')
 
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
