@@ -366,7 +366,6 @@ class Brush:
 
         for p in self.composite_points:
             pixel_color = glReadPixels(p.point[0], 479 - p.point[1], 1, 1, GL_RGBA, GL_FLOAT)
-            p.consolidate()
             if pixel_color[0][0][0] == 0:
                 p.add_color(self.color)
 
@@ -434,9 +433,9 @@ class Brush:
         for p in self.triangle_points:
             color = []
             pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)
-            color.append(pixel_color[0][0])
-            color.append(self.color)
-            self.composite_points.append(geometry.TrianglePoint(p,color))
+            t = geometry.TrianglePoint(p,[pixel_color[0][0]])
+            t.add_color(self.color)
+            self.composite_points.append(t)
 
         for l in lines:
             self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
@@ -523,9 +522,10 @@ class Brush:
                         else:
                             col = i[2]
                         if points > 1:
-                            final_color.append(col)
+                            final_color = col
 
-            if final_color[0] == [1, 1, 1, 1]:
+
+            if final_color[0] == 1:
                 print c_lists
             #while i[0] < len(c_lists[0]) or i[1] < len(c_lists[1]) or i[2] < len(c_lists[2]):
             #    c_lists[i[0]]
@@ -579,7 +579,7 @@ class Brush:
             #colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
             tri = []
             for p in t:
-                tri.append(geometry.TrianglePoint(p,final_color))
+                tri.append(geometry.TrianglePoint(p,[final_color]))
 
 
             self.triangles.append(geometry.Triangle(tri))

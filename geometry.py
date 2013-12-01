@@ -11,7 +11,9 @@ class Triangle:
 
     def draw(self):
         for p in self.points:
-            glColor3f(p.composite[0], p.composite[1], p.composite[2])
+            color = p.get_current_color()
+            #print 'c'+str(color)
+            glColor3f(color[0], color[1], color[2])
             glVertex2f(p.point[0], p.point[1])
 
     def draw_color(self, color):
@@ -32,31 +34,30 @@ class TrianglePoint:
     def __init__(self, point=None, colors=None, file=None):
         if file == None:
             self.point = point
-            self.colors = colors
-            self.composite = self.composite_colors()
+            self.colors = []
+            if len(colors[0]) == 1:
+                self.colors.append([colors])
+            else:
+                self.colors.append(colors[0])
+                for c in colors[1:]:
+                    self.add_color(c)
         else:
             self.load(file)
 
-    def composite_colors(self):
-        final_color = [1, 1, 1, 1]
-        for c in self.colors:
-            alpha2 = c[3]
-            for i in range(3):
-                final_color[i] = final_color[i]*(1-alpha2) + c[i]*alpha2
-        final_color[3] = 1
-        return final_color
 
-    def consolidate(self):
-        #hold = self.colors.pop()
-        consolidate = self.composite_colors()
-        self.colors = []
-        self.colors.append(consolidate)
-        #self.colors.append(hold)
 
     def add_color(self, color):
-        self.colors.append(color)
-        self.composite = self.composite_colors()
+        final_color = [0, 0, 0, 0]
+        alpha2 = color[3]
+        for i in range(3):
+            final_color[i] = self.colors[-1][i]*(1-alpha2) + color[i]*alpha2
+        final_color[3] = 1
 
+        self.colors.append(color)
+        self.colors.append(final_color)
+
+    def get_current_color(self):
+        return self.colors[-1]
 
     def save(self, f):
         f.write(str(self.point[0])+','+str(self.point[1]))
