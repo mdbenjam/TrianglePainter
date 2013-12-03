@@ -1,6 +1,7 @@
 __author__ = 'mdbenjam'
 
 from OpenGL.GL import *
+import math
 
 class Triangle:
     def __init__(self, points=None,file=None):
@@ -10,8 +11,10 @@ class Triangle:
             self.load(file)
 
     def draw(self):
+        centroid = getCentroid(self.points)
+
         for p in self.points:
-            color = p.get_current_color()
+            color = p.get_current_color(centroid)
             #print 'c'+str(color)
             glColor3f(color[0], color[1], color[2])
             glVertex2f(p.point[0], p.point[1])
@@ -30,52 +33,107 @@ class Triangle:
         for i in range(3):
             self.points.append(TrianglePoint(file=f))
 
+class ColorRegion:
+    def __init__(self, color, start_angle, end_angle):
+        self.color = color
+        self.start_angle = start_angle
+        self.end_angle = end_angle
+
+
+def getCentroid(tri):
+    centroid = [0, 0]
+    for p in tri:
+        centroid[0] = centroid[0] + p.point[0]
+        centroid[1] = centroid[1] + p.point[1]
+
+    return [centroid[0]/3.0, centroid[1]/3.0]
+
+def getCentroidPoints(tri):
+    centroid = [0, 0]
+    for p in tri:
+        centroid[0] = centroid[0] + p[0]
+        centroid[1] = centroid[1] + p[1]
+
+    return [centroid[0]/3.0, centroid[1]/3.0]
+
+def get_color(regions, angle):
+    for r in regions:
+        if (r.start_angle <= angle <= r.end_angle or
+                (r.end_angle < r.start_angle and
+                (r.start_angle <= angle+2*math.pi <= r.end_angle+2*math.pi or
+                 r.start_angle <= angle <= r.end_angle+2*math.pi))):
+            return r.color
+    return regions[0].color
+
+def colors_equal(c1, c2):
+    return (abs(c1[0]-c2[0]) < .01 and
+            abs(c1[1]-c2[1]) < .01 and
+            abs(c1[2]-c2[2]) < .01)
+
 class TrianglePoint:
-    def __init__(self, point=None, colors=None, file=None):
+    def __init__(self, point=None, color_regions=None, file=None):
         if file == None:
             self.point = point
-            self.colors = []
-            if len(colors[0]) == 1:
-                self.colors.append([colors])
-            else:
-                self.colors.append(colors[0])
-                for c in colors[1:]:
-                    self.add_color(c)
+            self.color_regions = color_regions
         else:
             self.load(file)
 
+    def get_current_color(self, centroid):
+        return get_color(self.color_regions, math.atan2(centroid[1]-self.point[1], centroid[0]-self.point[0]))
 
-
-    def add_color(self, color):
-        final_color = [0, 0, 0, 0]
-        alpha2 = color[3]
-        for i in range(3):
-            final_color[i] = self.colors[-1][i]*(1-alpha2) + color[i]*alpha2
-        final_color[3] = 1
-
-        self.colors.append(color)
-        self.colors.append(final_color)
-
-    def get_current_color(self):
-        return self.colors[-1]
+    def composite_color(self, color):
+        alpha = color[3]
+        for r in self.color_regions:
+            current_color = r.color
+            composite_color = [color[0]*alpha + current_color[0]*(1-alpha),
+                               color[1]*alpha + current_color[1]*(1-alpha),
+                               color[2]*alpha + current_color[2]*(1-alpha),
+                               1]
+            r.color = composite_color
 
     def save(self, f):
         f.write(str(self.point[0])+','+str(self.point[1]))
         f.write(':')
-        f.write(str(self.colors[0, 0])+','+
-                    str(self.colors[0, 1])+','+
-                    str(self.colors[0, 2])+','+
-                    str(self.colors[0, 3]))
+        f.write(str(len(self.color_regions)))
         f.write('\n')
+        for c in self.color_regions:
+            f.write(str(c.color[0])+','+
+                        str(c.color[1])+','+
+                        str(c.color[2])+','+
+                        str(c.color[3])+','+
+                        str(c.start_angle)+','+
+                        str(c.end_angle)+'\n')
+
 
     def load(self, f):
         line = f.readline()
         s = line.split(':')
         point = s[0].split(',')
-        color = s[1].split(',')
+        num = int(s[1])
+        self.color_regions = []
+        for i in range(num):
+            c = f.readline().split(',')
+            self.color_regions.append(ColorRegion([float(c[0]),
+                                       float(c[1]),
+                                       float(c[2]),
+                                       float(c[3])],
+                                       float(c[4]),
+                                       float(c[5])))
+
+
         self.point = [float(point[0]), float(point[1])]
-        self.colors = []
-        self.colors.append([float(color[0]), float(color[1]), float(color[2]), float(color[3])])
+
+def pointInTriangle(p, tri):
+    def cross(v1, v2):
+        return v1[0]*v2[1] - v1[1]*v2[0]
+
+    def sameSide(p, p1, p2, p3):
+        side = [p1[0]-p2[0], p1[1]-p2[1]]
+        to_point = [p[0]-p2[0], p[1]-p2[1]]
+        to_tip = [p3[0]-p2[0], p3[1]-p2[1]]
+        return cross(side, to_point)*cross(side, to_tip) > 0
+
+    return sameSide(p, tri[0], tri[1], tri[2]) and sameSide(p, tri[1], tri[2], tri[0]) and sameSide(p, tri[2], tri[0], tri[1])
 
 def pointInQuad(self, p, quad):
     flag = 0

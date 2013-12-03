@@ -132,6 +132,10 @@ class Painter:
             self.brush.change_color((0,0,1,0.5))
         if args[0] == 'l':
             self.brush.change_color((0,0,0,0.5))
+        if args[0] == 'c':
+            self.brush.cycle(1)
+        if args[0] == 'x':
+            self.brush.cycle(-1)
 
     # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)  
     def mousePressed(self, button, state, x, y):

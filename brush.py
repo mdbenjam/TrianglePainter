@@ -5,6 +5,7 @@ import numpy as np
 import triangle
 from skimage import measure
 from OpenGL.GL import *
+from OpenGL.GLUT import *
 import copy
 import math
 import sys
@@ -30,6 +31,8 @@ class Brush:
         self.color = color
         self.brush_radius = brush_radius
         self.num_sides = num_sides
+
+        self.show_index = 0
 
         self.make_brush()
 
@@ -77,6 +80,9 @@ class Brush:
 
         glEnd()
 
+    def cycle(self, amount):
+        self.show_index = (self.show_index + amount) % len(self.composite_points)
+
     def draw_triangles(self, flag):
         glBegin(GL_TRIANGLES)
         for t in self.triangles:
@@ -105,8 +111,26 @@ class Brush:
             glPointSize(3.0)
             glBegin(GL_POINTS)
             glColor3f(0,0,1)
-            for t in self.triangle_points:
-                glVertex2f(t[0], t[1])
+            index = 0
+            for t in self.composite_points:
+                if self.show_index == index:
+                    glColor3f(0,.4,0)
+                    glEnd()
+                    glLineWidth(3)
+                    glBegin(GL_LINES)
+                    length = 10
+                    angle1 = t.color_regions[0].start_angle
+                    angle2 = t.color_regions[0].end_angle
+                    glVertex2f(t.point[0], t.point[1])
+                    glVertex2f(t.point[0]+math.cos(angle1)*length, t.point[1]+math.sin(angle1)*length)
+                    glVertex2f(t.point[0], t.point[1])
+                    glVertex2f(t.point[0]+math.cos(angle2)*length, t.point[1]+math.sin(angle2)*length)
+                    glEnd()
+                    glLineWidth(1)
+                    glBegin(GL_POINTS)
+                    glColor3f(0,0,1)
+                glVertex2f(t.point[0], t.point[1])
+                index = index + 1
 
             glEnd()
             glPointSize(1.0)
@@ -223,17 +247,6 @@ class Brush:
         width = 640
         height = 480
 
-        """
-        points = []
-        if self.lastMouse != None:
-            count = 0
-            for p in self.brushPoints:
-                count = count + 1
-                point = (self.lastMouse.mouseX + p[0], self.lastMouse.mouseY + p[1])
-                self.addNotCoveredPoint(point, count == len(self.brushPoints))
-                points.append(point)
-            self.removeCoverdPoint(points)
-        """
 
         self.lastMouse = None
 
@@ -249,39 +262,7 @@ class Brush:
         #print self.values.shape
         self.contours = measure.find_contours(rvalues[:,:], .5)
         self.triangle_points = []
-        """
-        lines = []
-        MAX_ANGLE_DEVIATION = math.pi*20.0/180.0
-        for c in self.contours:
-            if len(c) < 2:
-                continue
-            self.triangle_points.append(c[0])
-            last_p = c[0]
-            last_angle = None
-            first_angle = None
-            #TODO: REMOVE 480
-            self.triangle_points.append((last_p[1], 480-last_p[0]))
-            first_index = len(self.triangle_points)
 
-            #TODO: Check for closed
-            for p in c[1:-1]:
-                dy = p[1]-last_p[1]
-                dx = p[0]-last_p[0]
-                angle = math.atan2(dy, dx)
-                if first_angle == None:
-                    first_angle = angle
-                    last_angle = angle
-                else:
-                    if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
-                            (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
-                        first_angle = None
-                        last_angle = None
-                        self.triangle_points.append((p[1], 480-p[0]))
-                        index = len(self.triangle_points)
-                        lines.append([index - 1, index])
-                last_p = p
-            lines.append([len(self.triangle_points), first_index])
-        """
         lines = []
         holes = []
         MAX_ANGLE_DEVIATION = math.pi*25.0/180.0
@@ -364,10 +345,12 @@ class Brush:
             lines.append([len(self.triangle_points)-1, first_index])
 
 
+        """
         for p in self.composite_points:
             pixel_color = glReadPixels(p.point[0], 479 - p.point[1], 1, 1, GL_RGBA, GL_FLOAT)
             if pixel_color[0][0][0] == 0:
                 p.add_color(self.color)
+        """
 
         #print self.contours
         #x, y = np.ogrid[-np.pi:np.pi:480j, -np.pi:np.pi:480j]
@@ -425,17 +408,56 @@ class Brush:
         """
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
 
+        #old_triangles = copy.deepcopy(self.triangle_points)
+
         starting_value = len(self.composite_points)
 
-        glClear(GL_COLOR_BUFFER_BIT)
-        self.draw_triangles(False)
+        #glutSwapBuffers()
+        #glClear(GL_COLOR_BUFFER_BIT)
+        #self.draw_triangles(False)
 
+        #glutSwapBuffers()
+
+
+        #glutSwapBuffers()
+
+
+        angles = np.empty([len(self.triangle_points), 2])
+        for l in lines:
+            p1 = self.triangle_points[l[0]]
+            p2 = self.triangle_points[l[1]]
+            angle = math.atan2(p1[1]-p2[1], p1[0]-p2[0])
+            angles[l[0], 0] = (angle + math.pi) % (2*math.pi)
+            if angles[l[0], 0] > math.pi:
+                angles[l[0], 0] = angles[l[0], 0] - 2*math.pi
+            angles[l[1], 1] = angle
+
+
+        index = 0
         for p in self.triangle_points:
-            color = []
-            pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)
-            t = geometry.TrianglePoint(p,[pixel_color[0][0]])
-            t.add_color(self.color)
+            #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
+            pixel_color = [1, 1, 1, 1]
+            for t in self.triangles:
+                pts = t.points
+                tri = [pts[0].point, pts[1].point, pts[2].point]
+                if geometry.pointInTriangle(p, tri):
+                    pixel_color = pts[0].get_current_color(geometry.getCentroid(t.points))
+                    break
+            alpha = self.color[3]
+            composite_color = [self.color[0]*alpha + pixel_color[0]*(1-alpha),
+                               self.color[1]*alpha + pixel_color[1]*(1-alpha),
+                               self.color[2]*alpha + pixel_color[2]*(1-alpha),
+                               1]
+            regions = [geometry.ColorRegion(composite_color, angles[index,0], angles[index,1]),
+                       geometry.ColorRegion(pixel_color, angles[index,1], angles[index,0])]
+            t = geometry.TrianglePoint(p,regions)
             self.composite_points.append(t)
+            index = index + 1
+
+        for p in self.composite_points[0:starting_value]:
+            pixel_color = glReadPixels(p.point[0], 479 - p.point[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
+            if pixel_color[0] == 0:
+                p.composite_color(self.color)
 
         for l in lines:
             self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
@@ -480,116 +502,99 @@ class Brush:
 
         #self.draw_stroke()
         self.triangles = []
-        for indices in tri_indicies:
-            t = delauny_points[indices]
-            sum_x = 0
-            sum_y = 0
-            for p in t:
-                sum_x = sum_x + p[0]
-                sum_y = sum_y + p[1]
 
-            c_lists = []
-            for i in indices:
-                if i < len(self.composite_points):
-                    c_lists.append(np.array(self.composite_points[i].colors))
-                else:
-                    c_lists.append(np.array([[-1, -1, -1, -1]]))
-            i = [0, 0, 0]
-            final_color = [[1, 1, 1, 1]]
-
-            for i[0] in c_lists[0]:
-                for i[1] in c_lists[1]:
-                    for i[2] in c_lists[2]:
-                        points = 0
-                        col = [0, 0, 0, 0]
-                        if np.all(abs(i[0] - i[1]) < 0.01):
-                            points = points + 1
-                        if np.all(abs(i[1] - i[2]) < 0.01):
-                            points = points + 1
-                        if np.all(abs(i[2] - i[0]) < 0.01):
-                            points = points + 1
-
-                        if i[0][0] == -1:
-                            points = points + 1
-                        else:
-                            col = i[0]
-                        if i[1][0] == -1:
-                            points = points + 1
-                        else:
-                            col = i[1]
-                        if i[2][0] == -1:
-                            points = points + 1
-                        else:
-                            col = i[2]
-                        if points > 1:
-                            final_color = col
-
-
-            if final_color[0] == 1:
-                print c_lists
-            #while i[0] < len(c_lists[0]) or i[1] < len(c_lists[1]) or i[2] < len(c_lists[2]):
-            #    c_lists[i[0]]
-            """
-            for i in indices:
-                if i < len(colors):
-                    pixel_color = glReadPixels(delauny_points[i, 0, 0], 479 - delauny_points[i, 0, 1], 1, 1, GL_RGBA, GL_FLOAT)
-                    color.append(pixel_color[0][0])
-
-            color.append(self.color)
-            #colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
-            if np.all(c[0] == c[1]):
-                if c[0][0] == -1:
-                    color = c[2]
-                else:
-                    color = c[0]
-            elif np.all(c[0] == c[2]):
-                if c[0][0] == -1:
-                    color = c[1]
-                else:
-                    color = c[0]
-            elif np.all(c[1] == c[2]):
-                if c[1][0] == -1:
-                    color = c[0]
-                else:
-                    color = c[1]
+        graph = []
+        marked = []
+        all_points = []
+        for i in range(len(delauny_points)):
+            graph.append([])
+            if i < len(self.composite_points):
+                all_points.append(self.composite_points[i])
+                marked.append(True)
             else:
-                index = 0
-                if c[0][0] == -1:
-                    index = 0
-                if c[1][0] == -1:
-                    index = 1
-                if c[2][0] == -1:
-                    index = 2
-                other1 = (index + 1) % 3
-                other2 = (index + 2) % 3
-                for s in segments:
-                    if s[0] == indices[index]:
-                        if s[1] == indices[other1]:
-                            color = c[other2]
-                        else:
-                            color = c[other1]
+                all_points.append(None)
+                marked.append(False)
+
+
+
+        for s in segments:
+            graph[s[0]].append(s[1])
+            graph[s[1]].append(s[0])
+
+
+        def color_index(index):
+            if marked[index]:
+                return
+
+            marked[index] = True
+            color_regions = []
+            angles = []
+            p1 = delauny_points[index]
+            for s in graph[index]:
+                # Unclear if this is always True. i.e. we might need to search until we find a
+                # point that isn't new. It may not always be a point's first neighbor.
+                color_reg = []
+
+                p2 = delauny_points[s]
+
+                angles.append((math.atan2(p2[1]-p1[1], p2[0]-p1[0]), all_points[s], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, p2))
+
+            print "before ", angles
+            angles = sorted(angles, key = lambda a: a[0])
+            print "after ", angles
+
+            for i in range(len(angles)):
+                i2 = (i + 1) % len(angles)
+                if i2 == 0:
+                    average = (angles[i][0] + angles[i2][0] + 2*math.pi)/2.0
+                    if average > math.pi:
+                        average = average - 2*math.pi
+                else:
+                    average = (angles[i][0] + angles[i2][0])/2.0
+
+                if angles[i][2] > angles[i2][2]:
+                    if angles[i][1] is None:
+                        point_to_use = angles[i2][1]
                     else:
-                        if s[0] == indices[other1]:
-                            color = c[other2]
-                        else:
-                            color = c[other1]
-            """
+                        point_to_use = angles[i][1]
+                else:
+                    if angles[i2][1] is None:
+                        point_to_use = angles[i][1]
+                    else:
+                        point_to_use = angles[i2][1]
+
+                centroid = geometry.getCentroidPoints([p1, angles[i][3], angles[i2][3]])
+
+                color_regions.append(geometry.ColorRegion(point_to_use.get_current_color(centroid), angles[i][0], angles[i2][0]))
+
+                #color_reg.extend(all_points[s].color_regions)
+                #print "segs", 0, s
+                #for c in color_reg:
+                #    print c.color
+
+                #color_regions.extend(color_reg)
+            #print len(color_regions)
+            #for c in color_regions:
+            #    print c.color
+            all_points[index] = geometry.TrianglePoint(p1, color_regions)
 
 
-            #colors = glReadPixels(sum_x/3-.5, 480 - sum_y/3-.5, 1, 1, GL_RGBA, GL_FLOAT)
-            tri = []
-            for p in t:
-                tri.append(geometry.TrianglePoint(p,[final_color]))
+        for i in range(len(all_points)):
+                color_index(i)
 
+        for indices in tri_indicies:
+            t = []
+            for i in indices:
+                t.append(all_points[i])
 
-            self.triangles.append(geometry.Triangle(tri))
+            self.triangles.append(geometry.Triangle(t))
 
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))
 
         self.current_quads = []
-        #self.save('last_stroke.txt')
+        self.save('last_stroke.txt')
 
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
