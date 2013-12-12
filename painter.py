@@ -30,9 +30,13 @@ brushWidth = 10
 out_name = ""
 
 class Window:
-    def __init__(self, width, height):
+    def __init__(self, width, height, zoom_width, zoom_height, center_x, center_y):
         self.width = width
         self.height = height
+        self.zoom_width = zoom_width
+        self.zoom_height = zoom_height
+        self.center_x = center_x
+        self.center_y = center_y
 
 
 class Mouse:
@@ -43,15 +47,23 @@ class Mouse:
 
 class Painter:
 
-    def __init__(self):
+    def __init__(self, window):
         self.mouse = Mouse()
-        self.brush = brush.Brush(50, 4, (0,0,1,0.5))
+        self.window = window
+        self.brush = brush.Brush(50, 4, window, (0,0,1,0.5))
         self.next_clear_stroke = False
         self.draw_outlines = False
+        self.currentScale = 1
+        self.center = (0, 0)
+        self.zooming = False
+        self.width = 0
+        self.height = 0
 
     def resize(self, width, height):
         if height==0:
             height=1
+        self.window.width = width
+        self.window.height = height
         glViewport(0, 0, width, height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -65,9 +77,34 @@ class Painter:
         glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glClearColor(1.0, 1.0, 1.0, 1.0)
 
+    def zoom(self, z, x, y):
+        x = float(x) / self.window.width - .5
+        y = float(y) / self.window.height - .5
+        preX = x * self.window.zoom_width
+        preY = y * self.window.zoom_width
+        self.window.zoom_width = self.window.zoom_width / z
+        self.window.zoom_height = self.window.zoom_height / z
+        postX = x * self.window.zoom_width
+        postY = y * self.window.zoom_width
+        self.window.center_x = self.window.center_x + preX
+        self.window.center_y = self.window.center_y - preY
+        print x, y, self.window.center_x, self.window.center_y
+
+
     def draw_triangles(self):
 
         glClear(GL_COLOR_BUFFER_BIT)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(self.window.center_x - (self.window.zoom_width / 2.0),
+                self.window.center_x + (self.window.zoom_width / 2.0),
+                self.window.center_y - (self.window.zoom_height / 2.0),
+                self.window.center_y + (self.window.zoom_height / 2.0),
+                -1,
+                1)
+
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
         """
         glBegin(GL_TRIANGLES)
         glColor3f(0,0,0)
@@ -90,12 +127,15 @@ class Painter:
         """
 
         if self.next_clear_stroke:
-            self.brush.clear_stroke()
+            self.brush.clear_stroke(self.window)
             self.next_clear_stroke = False
 
+        #glPushMatrix()
+        #glTranslated(-self.window.center_x, -self.window.center_y, 0)
         self.brush.draw_triangles(self.draw_outlines)
-        self.brush.draw_cursor(self.mouse)
-        self.brush.draw_stroke()
+        #glPopMatrix()
+        self.brush.draw_cursor(self.mouse, self.window)
+        self.brush.draw_stroke(self.window)
         #self.brush.draw_contours()
 
         glutSwapBuffers()
@@ -136,29 +176,50 @@ class Painter:
             self.brush.cycle(1)
         if args[0] == 'x':
             self.brush.cycle(-1)
+        if args[0] == 'z':
+            self.zooming = True
 
-    # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)  
+    def keyReleased(self, *args):
+        if args[0] == 'z':
+            self.zooming = False
+
+    # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)
     def mousePressed(self, button, state, x, y):
 
         global lastX
         global lastY
 
-        if button == GLUT_LEFT_BUTTON:
-            if(state == GLUT_DOWN):
-                lastX = x
-                lastY = y
-                self.mouse.mouseDown = True
-                self.brush.new_stroke(self.mouse)
-            else:
-                self.next_clear_stroke = True
-                self.mouse.mouseDown = False
+        if self.zooming:
+            if button == GLUT_LEFT_BUTTON:
+                if(state == GLUT_UP):
+                    self.zoom(2, x, y)
+            if button == GLUT_RIGHT_BUTTON:
+                if(state == GLUT_UP):
+                    self.zoom(.5, x, y)
+        else:
+            if button == GLUT_LEFT_BUTTON:
+                if(state == GLUT_DOWN):
+                    lastX = x
+                    lastY = y
+                    self.mouse.mouseDown = True
+                    self.brush.new_stroke(self.mouse, self.window.width/self.window.zoom_width)
+                else:
+                    self.next_clear_stroke = True
+                    self.mouse.mouseDown = False
 
-        if button == GLUT_RIGHT_BUTTON:
-            if(state == GLUT_DOWN):
-                self.draw_outlines = not self.draw_outlines
+            if button == GLUT_RIGHT_BUTTON:
+                if(state == GLUT_DOWN):
+                    self.draw_outlines = not self.draw_outlines
 
 
+    def mouseWheel(self, button, dir, x, y):
+        if dir > 0:
+            # Scroll Up
+            self.zoom(2)
 
+        if dir < 0:
+            # Scroll Down
+            self.zoom(.5)
 
     def removelines(self, points, lines, removeNumber):
         points = np.delete(points, removeNumber)
@@ -180,7 +241,7 @@ class Painter:
             diffX = x - lastX
             diffY = y - lastY
             if abs(diffX) + abs(diffY) > 5:
-                self.brush.stamp (self.mouse)
+                self.brush.stamp (self.mouse, self.window.width/self.window.zoom_width)
                 lastX = x
                 lastY = y
         self.mouse.mouseX = x
@@ -194,7 +255,7 @@ def main():
 
     window_width = 640
     window_height = 480
-    window_params = Window(window_width, window_height)
+    window_params = Window(window_width, window_height, window_width, window_height, 0, 0)
 
     out_name = "last_stroke.txt"#raw_input("FileName: ")
 
@@ -215,7 +276,7 @@ def main():
     # if it weren't for the global declaration at the start of main.
     window = glutCreateWindow("Painter")
 
-    painter = Painter()
+    painter = Painter(window_params)
     glutDisplayFunc (painter.draw_triangles)
 
     # Uncomment this line to get full screen.
@@ -229,6 +290,7 @@ def main():
 
     # Register the function called when the keyboard is pressed.  
     glutKeyboardFunc (painter.keyPressed)
+    glutKeyboardUpFunc (painter.keyReleased)
 
     # Register the function called when the mouse is pressed.  
     glutMouseFunc (painter.mousePressed)
@@ -238,6 +300,7 @@ def main():
 
     # Register the function called when the mouse is moved.  
     glutPassiveMotionFunc (painter.mouseMoved)
+
 
     painter.init()
 

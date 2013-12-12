@@ -12,7 +12,6 @@ class Triangle:
 
     def draw(self):
         centroid = getCentroid(self.points)
-
         for p in self.points:
             color = p.get_current_color(centroid)
             #print 'c'+str(color)
