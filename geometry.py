@@ -122,19 +122,20 @@ class TrianglePoint:
 
         self.point = [float(point[0]), float(point[1])]
 
+def cross(v1, v2):
+    return v1[0]*v2[1] - v1[1]*v2[0]
+
 def pointInTriangle(p, tri):
-    def cross(v1, v2):
-        return v1[0]*v2[1] - v1[1]*v2[0]
 
     def sameSide(p, p1, p2, p3):
         side = [p1[0]-p2[0], p1[1]-p2[1]]
         to_point = [p[0]-p2[0], p[1]-p2[1]]
         to_tip = [p3[0]-p2[0], p3[1]-p2[1]]
-        return cross(side, to_point)*cross(side, to_tip) > 0
+        return cross(side, to_point)*cross(side, to_tip) >= 0
 
     return sameSide(p, tri[0], tri[1], tri[2]) and sameSide(p, tri[1], tri[2], tri[0]) and sameSide(p, tri[2], tri[0], tri[1])
 
-def pointInQuad(self, p, quad):
+def pointInQuad(p, quad):
     flag = 0
     for j in range(4):
         v1 = quad[j]

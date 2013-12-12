@@ -31,6 +31,7 @@ class Brush:
         self.color = color
         self.brush_radius = brush_radius
         self.num_sides = num_sides
+        self.bad_points = []
 
         self.show_index = 0
 
@@ -63,13 +64,13 @@ class Brush:
         glBegin(GL_POLYGON)
         glColor4f(self.color[0], self.color[1], self.color[2], self.color[3])
 
-        (x, y) = self.to_world_coords(float(mouse.mouseX), float(mouse.mouseY), window)
+        (x, y) = window.to_world_coords(float(mouse.mouseX), float(mouse.mouseY))
         for p in self.brushPoints:
             glVertex2f(x + p[0], y + p[1])
 
         glEnd()
 
-    def draw_stroke(self, window, black=False):
+    def draw_stroke(self, black=False):
         glBegin(GL_QUADS)
         if black:
             glColor4f(0,0,0,1)
@@ -78,23 +79,26 @@ class Brush:
 
         for q in self.current_quads:
             for p in q:
-                (x, y) = self.to_world_coords(p[0], p[1], window)
-                glVertex2f(x, y)
+                glVertex2f(p[0], p[1])
 
         glEnd()
 
     def cycle(self, amount):
         self.show_index = (self.show_index + amount) % len(self.composite_points)
-        print self.composite_points[self.show_index].point
-        for c in self.composite_points[self.show_index].color_regions:
-            print 'start', c.start_angle
-            print 'end', c.end_angle
 
     def draw_triangles(self, flag):
         glBegin(GL_TRIANGLES)
         for t in self.triangles:
             t.draw()
         glEnd()
+
+        glPointSize(3.0)
+        glBegin(GL_POINTS)
+        glColor3f(1,0,0)
+        for p in self.bad_points:
+            glVertex2f(p[0], p[1])
+        glEnd()
+        glPointSize(1.0)
 
         if flag:
             """
@@ -150,6 +154,9 @@ class Brush:
             glEnd()
             glPointSize(1.0)
 
+
+
+
             """
             glPointSize(3.0)
             glBegin(GL_POINTS)
@@ -184,7 +191,7 @@ class Brush:
         glEnd()
         glPointSize(1.0)
 
-    def new_stroke(self, mouse, zoom):
+    def new_stroke(self, mouse, window):
         #self.triangles = []
         self.triangle_points = []
         self.last_points = deque([])
@@ -193,9 +200,10 @@ class Brush:
         self.stroke_over = False
         points = []
         count = 0
+        zoom = window.width/window.zoom_width
         for p in self.brushPoints:
             count = count + 1
-            point = (mouse.mouseX + p[0]*zoom, mouse.mouseY + p[1]*zoom)
+            point = window.to_world_coords(mouse.mouseX + p[0]*zoom, mouse.mouseY + p[1]*zoom)
             #self.addNotCoveredPoint(point, count==len(self.brushPoints))
             points.append(point)
         self.current_quads.append(points)
@@ -203,7 +211,7 @@ class Brush:
 
 
 
-    def stamp(self, mouse, zoom):
+    def stamp(self, mouse, window):
         if self.lastMouse != None:
             quad = []
 
@@ -215,6 +223,7 @@ class Brush:
                 point = (mouse.mouseX + x1, mouse.mouseY + y1)
                 self.addNotCoveredPoint(point, i == len(self.brushPoints)-1)
             """
+            zoom = window.width/window.zoom_width
 
             for i in range(len(self.brushPoints)):
                 nextI = (i + 1) % len(self.brushPoints)
@@ -222,10 +231,10 @@ class Brush:
                 y1 = self.brushPoints[i][1]*zoom
                 x2 = self.brushPoints[nextI][0]*zoom
                 y2 = self.brushPoints[nextI][1]*zoom
-                points = [(self.lastMouse.mouseX + x1, self.lastMouse.mouseY + y1),
-                            (mouse.mouseX + x1, mouse.mouseY + y1),
-                            (mouse.mouseX + x2, mouse.mouseY + y2),
-                            (self.lastMouse.mouseX + x2, self.lastMouse.mouseY + y2)]
+                points = [window.to_world_coords(self.lastMouse.mouseX + x1, self.lastMouse.mouseY + y1),
+                            window.to_world_coords(mouse.mouseX + x1, mouse.mouseY + y1),
+                            window.to_world_coords(mouse.mouseX + x2, mouse.mouseY + y2),
+                            window.to_world_coords(self.lastMouse.mouseX + x2, self.lastMouse.mouseY + y2)]
                 self.current_quads.append(points)
 
             #TODO: Make this general for any poly brush
@@ -240,11 +249,7 @@ class Brush:
         self.lastMouse = copy.deepcopy(mouse)
 
 
-    def to_world_coords(self, x, y, window):
-        return ((x/window.width - .5) * window.zoom_width + window.center_x, (.5 - y/window.height) * window.zoom_height + window.center_y)
 
-    def to_window_coords(self, x, y, window):
-        return (((x - window.center_x)/window.zoom_width + .5)*window.width, (.5 - (y - window.center_y)/window.zoom_height)*window.height)
 
     def clear_stroke(self, window):
 
@@ -254,8 +259,9 @@ class Brush:
         #glClearColor(1.0, 1.0, 1.0, 1.0)
         #TODO: REMOVE 480
         #glViewport(0, 0, 640, 480)
+        self.save_action('hold.txt')
         glClear(GL_COLOR_BUFFER_BIT)
-        self.draw_stroke(window, black=True)
+        self.draw_stroke(black=True)
 
         width = window.width
         height = window.height
@@ -281,8 +287,7 @@ class Brush:
         DIST_THRESHOLD = .5
         for i in range(len(self.contours)):
             for j in range(len(self.contours[i])):
-                (self.contours[i][j][0], self.contours[i][j][1]) = self.to_world_coords(self.contours[i][j][1], window.height - self.contours[i][j][0],
-                                                                                        window)
+                (self.contours[i][j][0], self.contours[i][j][1]) = window.to_world_coords(self.contours[i][j][1], window.height - self.contours[i][j][0])
 
 
         for c in self.contours:
@@ -419,11 +424,9 @@ class Brush:
 
         self.holes = holes_array
 
-        """
-        A = dict(vertices = array, segments = line_array, holes = holes_array)
+        A = dict(vertices = array, segments = line_array)#, holes = holes_array)
         triangulation = triangle.triangulate(A, 'p')
-        delauny_points = triangulation['vertices'][triangulation['triangles']]
-        """
+        first_triangle_indicies = triangulation['triangles']
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
 
         #old_triangles = copy.deepcopy(self.triangle_points)
@@ -473,10 +476,30 @@ class Brush:
             index = index + 1
 
         for p in self.composite_points[0:starting_value]:
-            (windowx, windowy) = self.to_window_coords(p.point[0], p.point[1], window)
-            pixel_color = glReadPixels(windowx, height-1 - windowy, 1, 1, GL_RGBA, GL_FLOAT)[0][0]
-            if pixel_color[0] == 0:
+            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
+            pixel_color = glReadPixels(windowx-1.5, height - 1.5 - windowy , 3, 3, GL_RGBA, GL_FLOAT)
+            sum = 0
+            for i in range(3):
+                for j in range(3):
+                    sum += pixel_color[i][j][0]
+            if sum == 0:
                 p.composite_color(self.color)
+            else:
+                if sum < 9:
+                    for i in first_triangle_indicies:
+                        t = triangulation['vertices'][i]
+                        if geometry.pointInTriangle(p.point, t):
+                            centroid = geometry.getCentroidPoints(t)
+                            angle = math.atan2(centroid[1]-t[0][1], centroid[0]-t[0][0])
+                            r = self.composite_points[starting_value+i[0]].color_regions[0]
+                            if (r.start_angle <= angle <= r.end_angle or
+                                (r.end_angle < r.start_angle and
+                                (r.start_angle <= angle+2*math.pi <= r.end_angle+2*math.pi or
+                                 r.start_angle <= angle <= r.end_angle+2*math.pi))):
+                            #if (glReadPixels(centroid[0], height - centroid[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0][0] == 0):
+                                p.composite_color(self.color)
+                                break
+
 
         for l in lines:
             self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
@@ -536,10 +559,16 @@ class Brush:
 
 
 
-        for s in segments:
-            graph[s[0]].append(s[1])
-            graph[s[1]].append(s[0])
+        for t in tri_indicies:
+            graph[t[0]].append(t[1])
+            graph[t[0]].append(t[2])
+            graph[t[1]].append(t[0])
+            graph[t[1]].append(t[2])
+            graph[t[2]].append(t[1])
+            graph[t[2]].append(t[0])
 
+
+        bad_points = []
 
         def color_index(index):
             if marked[index]:
@@ -550,13 +579,12 @@ class Brush:
             angles = []
             p1 = delauny_points[index]
             for s in graph[index]:
-                # Unclear if this is always True. i.e. we might need to search until we find a
-                # point that isn't new. It may not always be a point's first neighbor.
+
                 color_reg = []
 
                 p2 = delauny_points[s]
 
-                angles.append((math.atan2(p2[1]-p1[1], p2[0]-p1[0]), all_points[s], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, p2))
+                angles.append((math.atan2(p2[1]-p1[1], p2[0]-p1[0]), all_points[s], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, p2, p2))
 
             angles = sorted(angles, key = lambda a: a[0])
 
@@ -572,19 +600,27 @@ class Brush:
                 if angles[i][2] > angles[i2][2]:
                     if angles[i][1] is None:
                         point_to_use = angles[i2][1]
+                        other_point = angles[i][3]
                     else:
                         point_to_use = angles[i][1]
+                        other_point = angles[i2][3]
                 else:
                     if angles[i2][1] is None:
                         point_to_use = angles[i][1]
+                        other_point = angles[i2][3]
                     else:
                         point_to_use = angles[i2][1]
+                        other_point = angles[i][3]
 
                 if point_to_use is None:
-                    print "FAILURE HERE"
+                    print "FAILURE HERE", angles[i2][1], angles[i][1]
+                    bad_points.append(p1)
                     continue
 
-                centroid = geometry.getCentroidPoints([p1, angles[i][3], angles[i2][3]])
+                centroid = geometry.getCentroidPoints([p1, angles[i][3], angles[i2][3]])#[(p1[0] + other_point[0])/2.0, (p1[1]+other_point[1])/2.0]
+                print 1,p1, angles[i][3], angles[i2][3]
+                print 2,centroid, point_to_use.point
+                print 3,point_to_use.get_current_color(centroid)
 
                 color_regions.append(geometry.ColorRegion(point_to_use.get_current_color(centroid), angles[i][0], angles[i2][0]))
 
@@ -600,8 +636,10 @@ class Brush:
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
 
 
-        for i in range(len(all_points)):
+        for i in range(len(self.composite_points), len(all_points)):
                 color_index(i)
+
+        self.bad_points = bad_points
 
         for indices in tri_indicies:
             t = []
@@ -636,7 +674,7 @@ class Brush:
             t.save(f)
         f.close()
 
-    def load(self, in_name):
+    def load(self, in_name, window):
         f = open(in_name, 'r')
         self.composite_points = []
         self.composite_lines = []
@@ -656,6 +694,65 @@ class Brush:
             self.triangles.append(geometry.Triangle(file=f))
 
         self.stroke_over = False
-        self.clear_stroke()
+        self.clear_stroke(window)
+        self.stroke_over = True
+        f.close()
+
+    def save_action(self, out_name):
+        self.save(out_name)
+
+        f = open(out_name, 'a')
+        f.write(str(len(self.current_quads))+'\n')
+        f.write(str(self.color[0])+','+str(self.color[1])+','+str(self.color[2])+','+str(self.color[3])+'\n')
+        for q in self.current_quads:
+            for p in q:
+                f.write(str(p[0]) + ',' + str(p[1])+'\n')
+
+        f.close()
+
+    def load_action(self, in_name, window):
+        f = open(in_name, 'r')
+        self.composite_points = []
+        self.composite_lines = []
+        self.triangles = []
+        self.current_quads = []
+        num_points = int(f.readline())
+        for i in range(num_points):
+            self.composite_points.append(geometry.TrianglePoint(file=f))
+
+        num_lines = int(f.readline())
+        for i in range(num_lines):
+            line = f.readline()
+            s = line.split(',')
+            self.composite_lines.append([int(s[0]),int(s[1])])
+
+        num_triangles = int(f.readline())
+        for i in range(num_triangles):
+            self.triangles.append(geometry.Triangle(file=f))
+
+        num_quads = int(f.readline())
+        color = f.readline().split(',')
+        self.color = [float(color[0]), float(color[1]), float(color[2]), float(color[3])]
+        for i in range(num_quads):
+            q = []
+            for j in range(4):
+                line = f.readline()
+                s = line.split(',')
+                q.append([float(s[0]), float(s[1])])
+            self.current_quads.append(q)
+
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(window.center_x - (window.zoom_width / 2.0),
+                window.center_x + (window.zoom_width / 2.0),
+                window.center_y - (window.zoom_height / 2.0),
+                window.center_y + (window.zoom_height / 2.0),
+                -1,
+                1)
+
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        self.stroke_over = False
+        self.clear_stroke(window)
         self.stroke_over = True
         f.close()

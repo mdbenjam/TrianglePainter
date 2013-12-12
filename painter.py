@@ -11,6 +11,7 @@ import os
 import time
 import copy
 import math
+import shutil
 
 import numpy as np
 import brush
@@ -38,6 +39,11 @@ class Window:
         self.center_x = center_x
         self.center_y = center_y
 
+    def to_world_coords(self, x, y):
+        return ((float(x)/self.width - .5) * self.zoom_width + self.center_x, (.5 - float(y)/self.height) * self.zoom_height + self.center_y)
+
+    def to_window_coords(self, x, y):
+        return (((float(x) - self.center_x)/self.zoom_width + .5)*self.width, (.5 - (float(y) - self.center_y)/self.zoom_height)*self.height)
 
 class Mouse:
     def __init__(self):
@@ -58,6 +64,13 @@ class Painter:
         self.zooming = False
         self.width = 0
         self.height = 0
+
+    def output(self, x, y, text):
+        glRasterPos2f(x, y, 0)
+        glColor3f(0, 0, 0)
+        glDisable(GL_TEXTURE_2D)
+        for p in text:
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, c_int(ord(p)))
 
     def resize(self, width, height):
         if height==0:
@@ -88,12 +101,14 @@ class Painter:
         postY = y * self.window.zoom_width
         self.window.center_x = self.window.center_x + preX
         self.window.center_y = self.window.center_y - preY
-        print x, y, self.window.center_x, self.window.center_y
 
 
     def draw_triangles(self):
 
         glClear(GL_COLOR_BUFFER_BIT)
+
+
+
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(self.window.center_x - (self.window.zoom_width / 2.0),
@@ -135,8 +150,20 @@ class Painter:
         self.brush.draw_triangles(self.draw_outlines)
         #glPopMatrix()
         self.brush.draw_cursor(self.mouse, self.window)
-        self.brush.draw_stroke(self.window)
+        self.brush.draw_stroke()
         #self.brush.draw_contours()
+
+
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, self.window.width, 0, self.window.height,
+                -1,
+                1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+
+        (xcoord, ycoord) = self.window.to_world_coords(self.mouse.mouseX, self.mouse.mouseY)
+        self.output(10, 10, 'X, Y: '+str(xcoord)+' '+str(ycoord))
 
         glutSwapBuffers()
 
@@ -149,7 +176,7 @@ class Painter:
         if args[0] == 'o':
             out_name = raw_input('Open File: ')
             if os.path.exists(out_name):
-                self.brush.load(out_name)
+                self.brush.load(out_name, self.window)
         if args[0] == 's':
             out_name = raw_input('Save File: ')
             self.brush.save(out_name)
@@ -157,7 +184,15 @@ class Painter:
         if args[0] == 'a':
             out_name = 'last_stroke.txt'
             if os.path.exists(out_name):
-                self.brush.load(out_name)
+                self.brush.load(out_name, self.window)
+
+        if args[0] == 'S':
+            shutil.move('hold.txt', 'last_stroke_action.txt')
+
+        if args[0] == 'A':
+            out_name = 'last_stroke_action.txt'
+            if os.path.exists(out_name):
+                self.brush.load_action(out_name, self.window)
 
         if args[0] == ']':
             self.brush.set_size(self.brush.get_size()+5)
@@ -202,7 +237,7 @@ class Painter:
                     lastX = x
                     lastY = y
                     self.mouse.mouseDown = True
-                    self.brush.new_stroke(self.mouse, self.window.width/self.window.zoom_width)
+                    self.brush.new_stroke(self.mouse, self.window)
                 else:
                     self.next_clear_stroke = True
                     self.mouse.mouseDown = False
@@ -241,7 +276,7 @@ class Painter:
             diffX = x - lastX
             diffY = y - lastY
             if abs(diffX) + abs(diffY) > 5:
-                self.brush.stamp (self.mouse, self.window.width/self.window.zoom_width)
+                self.brush.stamp (self.mouse, self.window)
                 lastX = x
                 lastY = y
         self.mouse.mouseX = x
