@@ -2,6 +2,7 @@ __author__ = 'mdbenjam'
 
 from OpenGL.GL import *
 import math
+import numpy
 
 class Triangle:
     def __init__(self, points=None,file=None):
@@ -22,6 +23,31 @@ class Triangle:
         for p in self.points:
             glColor3f(color[0], color[1], color[2])
             glVertex2f(p.point[0], p.point[1])
+
+    # TODO: optimize if all the colors are the same
+    def get_color_at_point(self, point):
+        centroid = getCentroid(self.points)
+        color = [0,0,0,0]
+        coeff_array = numpy.array([[self.points[0].point[0], self.points[0].point[1], 1],
+                                [self.points[1].point[0], self.points[1].point[1], 1],
+                                [self.points[2].point[0], self.points[2].point[1], 1]])
+        point_colors = []
+        index = 0
+        print "point:", point, "colors:",
+        for p in self.points:
+
+            print index, p.get_current_color(centroid),
+            print p.point
+            point_colors.append(p.get_current_color(centroid))
+            index = index + 1
+
+        for i in range(4):
+            color_array = numpy.array([point_colors[0][i], point_colors[1][i], point_colors[2][i]])
+            results = numpy.linalg.solve(coeff_array, color_array)
+            color[i] = results[0]*point[0] + results[1]*point[1] + results[2]
+
+        print "color", color
+        return color
 
     def save(self, f):
         for p in self.points:

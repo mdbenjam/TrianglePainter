@@ -56,7 +56,7 @@ class Painter:
     def __init__(self, window):
         self.mouse = Mouse()
         self.window = window
-        self.brush = brush.Brush(50, 4, window, (0,0,1,0.5))
+        self.brush = brush.Brush(50, 4, window, (0,0,1,0.5), 100)
         self.next_clear_stroke = False
         self.draw_outlines = False
         self.currentScale = 1
@@ -64,6 +64,7 @@ class Painter:
         self.zooming = False
         self.width = 0
         self.height = 0
+        self.fuzzy = 0
 
     def output(self, x, y, text):
         glRasterPos2f(x, y, 0)
@@ -195,9 +196,11 @@ class Painter:
                 self.brush.load_action(out_name, self.window)
 
         if args[0] == ']':
-            self.brush.set_size(self.brush.get_size()+5)
+            new_size = self.brush.get_size()+5
+            self.brush.set_size(new_size, new_size*2*self.fuzzy)
         if args[0] == '[':
-            self.brush.set_size(self.brush.get_size()-5)
+            new_size = self.brush.get_size()-5
+            self.brush.set_size(new_size, new_size*2*self.fuzzy)
 
         if args[0] == 'r':
             self.brush.change_color((1,0,0,0.5))
@@ -213,6 +216,13 @@ class Painter:
             self.brush.cycle(-1)
         if args[0] == 'z':
             self.zooming = True
+        if args[0] == 'f':
+            if self.fuzzy == 0:
+                self.fuzzy = 1
+            else:
+                self.fuzzy = 0
+            size = self.brush.get_size()
+            self.brush.set_size(size, size*2*self.fuzzy)
 
     def keyReleased(self, *args):
         if args[0] == 'z':
