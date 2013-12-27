@@ -56,7 +56,7 @@ class Painter:
     def __init__(self, window):
         self.mouse = Mouse()
         self.window = window
-        self.brush = brush.Brush(50, 4, window, (0,0,1,0.5), 100)
+        self.brush = brush.Brush(50, 100, window, (0,0,1,0.5), 100)
         self.next_clear_stroke = False
         self.draw_outlines = False
         self.currentScale = 1
@@ -64,7 +64,7 @@ class Painter:
         self.zooming = False
         self.width = 0
         self.height = 0
-        self.fuzzy = 0
+        self.fuzzy = 1
 
     def output(self, x, y, text):
         glRasterPos2f(x, y, 0)

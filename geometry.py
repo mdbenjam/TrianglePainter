@@ -43,8 +43,12 @@ class Triangle:
 
         for i in range(4):
             color_array = numpy.array([point_colors[0][i], point_colors[1][i], point_colors[2][i]])
-            results = numpy.linalg.solve(coeff_array, color_array)
-            color[i] = results[0]*point[0] + results[1]*point[1] + results[2]
+            try:
+                results = numpy.linalg.solve(coeff_array, color_array)
+                color[i] = results[0]*point[0] + results[1]*point[1] + results[2]
+            except numpy.linalg.linalg.LinAlgError:
+                print 'Color system degenerate. Linalg Error.'
+                color[i] = color_array[0]
 
         print "color", color
         return color
