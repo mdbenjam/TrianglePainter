@@ -33,11 +33,8 @@ class Triangle:
                                 [self.points[2].point[0], self.points[2].point[1], 1]])
         point_colors = []
         index = 0
-        print "point:", point, "colors:",
         for p in self.points:
 
-            print index, p.get_current_color(centroid),
-            print p.point
             point_colors.append(p.get_current_color(centroid))
             index = index + 1
 
@@ -50,7 +47,6 @@ class Triangle:
                 print 'Color system degenerate. Linalg Error.'
                 color[i] = color_array[0]
 
-        print "color", color
         return color
 
     def save(self, f):
@@ -67,6 +63,32 @@ class ColorRegion:
         self.color = color
         self.start_angle = start_angle
         self.end_angle = end_angle
+
+def composite_ranges(bottom_range, top_range):
+    color_ranges = []
+
+    print '--------'
+    for b in bottom_range:
+        print 'start', b.start_angle, 'end', b.end_angle, 'color', b.color
+    for b in top_range:
+        print 'start', b.start_angle, 'end', b.end_angle, 'color', b.color
+
+    if not ((bottom_range[0].start_angle <= top_range[0].start_angle <= bottom_range[0].end_angle or
+        (bottom_range[0].end_angle < bottom_range[0].start_angle and
+        (bottom_range[0].start_angle <= top_range[0].start_angle+2*math.pi <= bottom_range[0].end_angle+2*math.pi or
+         bottom_range[0].start_angle <= top_range[0].start_angle <= bottom_range[0].end_angle+2*math.pi)))):
+        top_range[0], top_range[1] = top_range[1], top_range[0]
+
+    color_ranges.append(ColorRegion(color_over(bottom_range[0].color, top_range[0].color),
+                                    top_range[0].start_angle, bottom_range[0].end_angle))
+    color_ranges.append(ColorRegion(color_over(bottom_range[1].color, top_range[0].color),
+                                    bottom_range[1].start_angle, top_range[0].end_angle))
+    color_ranges.append(ColorRegion(color_over(bottom_range[1].color, top_range[1].color),
+                                    top_range[1].start_angle, bottom_range[1].end_angle))
+    color_ranges.append(ColorRegion(color_over(bottom_range[0].color, top_range[1].color),
+                                    bottom_range[0].start_angle, top_range[1].end_angle))
+
+    return color_ranges
 
 
 def getCentroid(tri):
@@ -99,6 +121,14 @@ def colors_equal(c1, c2):
             abs(c1[1]-c2[1]) < .01 and
             abs(c1[2]-c2[2]) < .01)
 
+def color_over(color_bottom, color_top):
+    alpha = color_top[3]
+    composite_color = [color_top[0]*alpha + color_bottom[0]*(1-alpha),
+                       color_top[1]*alpha + color_bottom[1]*(1-alpha),
+                       color_top[2]*alpha + color_bottom[2]*(1-alpha),
+                       1]
+    return composite_color
+
 class TrianglePoint:
     def __init__(self, point=None, color_regions=None, file=None):
         if file == None:
@@ -113,12 +143,7 @@ class TrianglePoint:
     def composite_color(self, color):
         alpha = color[3]
         for r in self.color_regions:
-            current_color = r.color
-            composite_color = [color[0]*alpha + current_color[0]*(1-alpha),
-                               color[1]*alpha + current_color[1]*(1-alpha),
-                               color[2]*alpha + current_color[2]*(1-alpha),
-                               1]
-            r.color = composite_color
+            r.color = color_over(r.color, color)
 
     def save(self, f):
         f.write(str(self.point[0])+','+str(self.point[1]))

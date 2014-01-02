@@ -626,7 +626,6 @@ class Brush:
 
 
 
-        """
         for s in segments:
             graph[s[0]].append(s[1])
             graph[s[1]].append(s[0])
@@ -649,14 +648,12 @@ class Brush:
                 p2 = delauny_points[s]
 
                 angle = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
-                print 'first_angle', angle
                 i = s
                 while all_points[i] is None:
                     angle2 = []
                     for b in graph[i]:
-                        p3 = delauny_points[b]
-                        hold = math.atan2(p3[1]-p1[1], p3[0]-p1[0])
-                        print 'next_angle', hold
+                        p2 = delauny_points[b]
+                        hold = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
                         angle2.append(abs(hold-angle))
                     min_angle = angle2[0]
                     min_index = 0
@@ -665,10 +662,54 @@ class Brush:
                             min_angle = angle2[a]
                             min_index = a
                     i = min_index
-                    print 'chose', i
 
                 angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
 
+                def gen_color_range(angle1, angle2):
+                    c_r1 = angle1[1].color_regions
+                    c_r2 = angle2[1].color_regions
+                    c1 = geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
+                    c2 = geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
+                    dist = math.sqrt ((angle1[1].point[0] - angle2[1].point[0])**2
+                                      + (angle1[1].point[1] - angle2[1].point[1])**2)
+                    d1 = math.sqrt (angle1[2])
+                    d2 = math.sqrt (angle2[2])
+                    r1 = d1/dist
+                    r2 = d2/dist
+                    color = [c1[0] * r1 + c2[0] * r2, c1[1] * r1 + c2[1] * r2, c1[2] * r1 + c2[2] * r2, c1[3] * r1 + c2[3] * r2]
+                    return geometry.ColorRegion(color, angle1[0], angle2[0])
+
+                def get_other_range(other_indices, range1):
+                    if len(other_indicies) == 2:
+                        if abs(angles[other_indicies[0]][0] - angles[other_indicies[1]][0] - math.pi) < .001:
+                            range2 = [gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]]),
+                                      gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]])]
+                        if abs(angles[other_indicies[1]][0] - angles[other_indicies[0]][0] - math.pi) < .001:
+                            range2 = [gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]]),
+                                      gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]])]
+                        if other_indicies[0] < starting_value:
+                            return geometry.composite_ranges(range2, range1)
+                        else:
+                            return geometry.composite_ranges(range1, range2)
+
+                    else:
+                        return [range1]
+
+                for i in range(1,len(angles)):
+                    a = angles[i]
+                    other_indicies = range(1, len(angles))
+                    if abs(a[0] - angles[0][0] - math.pi) < .001:
+                        range1 = [gen_color_range(angles[0], a), gen_color_range(a, angles[0])]
+                        other_indicies.remove(i)
+                        color_regions = get_other_range(other_indicies, range1)
+
+                    elif abs(angles[0][0] - a[0] - math.pi) < .001:
+                        range1 = [gen_color_range(a, angles[0]), gen_color_range(angles[0], a)]
+                        other_indicies.remove(i)
+                        color_regions = get_other_range(other_indicies, range1)
+
+
+            """
             angles = sorted(angles, key = lambda a: a[0])
 
             for i in range(len(angles)):
@@ -697,8 +738,9 @@ class Brush:
             #print len(color_regions)
             #for c in color_regions:
             #    print c.color
+            """
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
-            print "index", index
+
         """
         for t in tri_indicies:
             graph[t[0]].append(t[1])
@@ -775,6 +817,7 @@ class Brush:
             #for c in color_regions:
             #    print c.color
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
+        """
 
 
         for i in range(len(self.composite_points), len(all_points)):
