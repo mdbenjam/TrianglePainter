@@ -465,8 +465,8 @@ class Brush:
         self.holes = holes_array
 
         A = dict(vertices = array, segments = line_array)#, holes = holes_array)
-        triangulation = triangle.triangulate(A, 'p')
-        first_triangle_indicies = triangulation['triangles']
+        first_triangulation = triangle.triangulate(A, 'p')
+        first_triangle_indicies = first_triangulation['triangles']
         #delauny_points = array[triangle.triangulate (A, 'p q')['triangles']]
 
         #old_triangles = copy.deepcopy(self.triangle_points)
@@ -495,77 +495,27 @@ class Brush:
 
 
         index = 0
+        transparent_color = [self.color[0], self.color[1], self.color[2], 0]
         for p in self.triangle_points:
-            #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
-            pixel_color = [1, 1, 1, 0]
-            for t in self.triangles:
-                pts = t.points
-                tri = [pts[0].point, pts[1].point, pts[2].point]
-                if geometry.pointInTriangle(p, tri):
-                    pixel_color = t.get_color_at_point(p)
-                    break
-            alpha = self.color[3]
-
-            composite_color = [self.color[0]*alpha + pixel_color[0]*(1-alpha),
-                               self.color[1]*alpha + pixel_color[1]*(1-alpha),
-                               self.color[2]*alpha + pixel_color[2]*(1-alpha),
-                               1]
 
             if self.fall_off_radius == 0:
-                regions = [geometry.ColorRegion(composite_color, angles[index,0], angles[index,1]),
-                           geometry.ColorRegion(pixel_color, angles[index,1], angles[index,0])]
+                regions = [geometry.ColorRegion(self.color, angles[index,0], angles[index,1]),
+                           geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
             else:
                 if index < size_of_core:
-                    regions = [geometry.ColorRegion(composite_color, 0, 2*math.pi)]
+                    regions = [geometry.ColorRegion(self.color, angles[index,0], angles[index,1]),
+                               geometry.ColorRegion(self.color, angles[index,1], angles[index,0])]
                 else:
-                    regions = [geometry.ColorRegion(pixel_color, 0, 2*math.pi)]
+                    regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,1]),
+                               geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
 
             t = geometry.TrianglePoint(p,regions)
             self.composite_points.append(t)
             index = index + 1
 
-        glClear(GL_COLOR_BUFFER_BIT)
-        glBegin(GL_TRIANGLES)
-        glColor4f(0,0,0,1)
 
-        for t in triangulation['vertices'][first_triangle_indicies]:
-            for p in t:
-                glVertex2f(p[0], p[1])
 
-        glEnd()
 
-        for p in self.composite_points[0:starting_value]:
-            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
-            pixel_color = glReadPixels(windowx-1.5, height - 1.5 - windowy , 3, 3, GL_RGBA, GL_FLOAT)
-            sum = 0
-            for i in range(3):
-                for j in range(3):
-                    sum += pixel_color[i][j][0]
-            if sum == 0:
-                p.composite_color(self.color)
-            else:
-                if sum < 9:
-                    for i in first_triangle_indicies:
-                        t = triangulation['vertices'][i]
-                        if geometry.pointInTriangle(p.point, t):
-                            t2 = []
-                            for j in range(len(i)):
-                                t2.append(self.composite_points[starting_value+i[j]])
-                            tri = geometry.Triangle(t2)
-                            #p.composite_color(tri.get_color_at_point(p.point))
-                            p.composite_color(self.color)
-                            """
-                            centroid = geometry.getCentroidPoints(t)
-                            angle = math.atan2(centroid[1]-t[0][1], centroid[0]-t[0][0])
-                            r = self.composite_points[starting_value+i[0]].color_regions[0]
-                            if (r.start_angle <= angle <= r.end_angle or
-                                (r.end_angle < r.start_angle and
-                                (r.start_angle <= angle+2*math.pi <= r.end_angle+2*math.pi or
-                                 r.start_angle <= angle <= r.end_angle+2*math.pi))):
-                            #if (glReadPixels(centroid[0], height - centroid[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0][0] == 0):
-                                p.composite_color(self.color)
-                                break
-                            """
 
 
         for l in lines:
@@ -610,7 +560,6 @@ class Brush:
 
 
         #self.draw_stroke()
-        self.triangles = []
 
         graph = []
         marked = []
@@ -643,186 +592,170 @@ class Brush:
             p1 = delauny_points[index]
             for s in graph[index]:
 
-                color_reg = []
-
                 p2 = delauny_points[s]
 
                 angle = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
                 i = s
-                while all_points[i] is None:
+                last_i = i
+                while i >= len(self.composite_points):
                     angle2 = []
+                    print i, 'angle', angle
                     for b in graph[i]:
                         p2 = delauny_points[b]
                         hold = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
+                        print b, hold
                         angle2.append(abs(hold-angle))
-                    min_angle = angle2[0]
-                    min_index = 0
+                    if graph[i][0] != last_i:
+                        min_angle = angle2[0]
+                        min_index = 0
+                    else:
+                        min_angle = angle2[1]
+                        min_index = 1
                     for a in range(1,len(angle2)):
-                        if angle2[a] < min_angle:
+                        if angle2[a] < min_angle and graph[i][a] != last_i:
                             min_angle = angle2[a]
                             min_index = a
-                    i = min_index
+                    last_i = i
+                    i = graph[i][min_index]
+                    print 'chose', i
+
+                p2 = delauny_points[i]
 
                 angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
 
-                def gen_color_range(angle1, angle2):
+                def gen_color_range(angle1, angle2, p):
                     c_r1 = angle1[1].color_regions
                     c_r2 = angle2[1].color_regions
-                    c1 = geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
-                    c2 = geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
+                    dx = math.cos(angle1[0]+math.pi/2)
+                    dy = math.sin(angle1[0]+math.pi/2)
+                    c1 = angle1[1].get_current_color([p[0]+dx, p[1]+dy])#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
+                    c2 = angle1[1].get_current_color([p[0]+dx, p[1]+dy])#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
                     dist = math.sqrt ((angle1[1].point[0] - angle2[1].point[0])**2
                                       + (angle1[1].point[1] - angle2[1].point[1])**2)
                     d1 = math.sqrt (angle1[2])
                     d2 = math.sqrt (angle2[2])
-                    r1 = d1/dist
-                    r2 = d2/dist
+                    if dist == 0:
+                        r1 = .5
+                        r2 = .5
+                    else:
+                        r1 = d1/dist
+                        r2 = d2/dist
                     color = [c1[0] * r1 + c2[0] * r2, c1[1] * r1 + c2[1] * r2, c1[2] * r1 + c2[2] * r2, c1[3] * r1 + c2[3] * r2]
                     return geometry.ColorRegion(color, angle1[0], angle2[0])
 
-                def get_other_range(other_indices, range1):
+                def get_other_range(other_indices, range1, p):
                     if len(other_indicies) == 2:
                         if abs(angles[other_indicies[0]][0] - angles[other_indicies[1]][0] - math.pi) < .001:
-                            range2 = [gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]]),
-                                      gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]])]
-                        if abs(angles[other_indicies[1]][0] - angles[other_indicies[0]][0] - math.pi) < .001:
-                            range2 = [gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]]),
-                                      gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]])]
-                        if other_indicies[0] < starting_value:
-                            return geometry.composite_ranges(range2, range1)
+                            range2 = [gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]], p),
+                                      gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]], p)]
+                        elif abs(angles[other_indicies[1]][0] - angles[other_indicies[0]][0] - math.pi) < .001:
+                            range2 = [gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]], p),
+                                      gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]], p)]
                         else:
+                            print 'FAILURE'
+                        if other_indicies[0] < starting_value:
                             return geometry.composite_ranges(range1, range2)
+                        else:
+                            return geometry.composite_ranges(range2, range1)
 
                     else:
                         return [range1]
 
+                flag = False
                 for i in range(1,len(angles)):
                     a = angles[i]
                     other_indicies = range(1, len(angles))
                     if abs(a[0] - angles[0][0] - math.pi) < .001:
-                        range1 = [gen_color_range(angles[0], a), gen_color_range(a, angles[0])]
+                        range1 = [gen_color_range(angles[0], a, p1), gen_color_range(a, angles[0], p1)]
                         other_indicies.remove(i)
-                        color_regions = get_other_range(other_indicies, range1)
+                        color_regions = get_other_range(other_indicies, range1, p1)
+                        flag = True
 
                     elif abs(angles[0][0] - a[0] - math.pi) < .001:
-                        range1 = [gen_color_range(a, angles[0]), gen_color_range(angles[0], a)]
+                        range1 = [gen_color_range(a, angles[0], p1), gen_color_range(angles[0], a, p1)]
                         other_indicies.remove(i)
-                        color_regions = get_other_range(other_indicies, range1)
+                        color_regions = get_other_range(other_indicies, range1, p1)
+                        flag = True
+                if not flag:
+                    print 'FAILED When determining color range order'
 
-
-            """
-            angles = sorted(angles, key = lambda a: a[0])
-
-            for i in range(len(angles)):
-                i2 = (i + 1) % len(angles)
-                if i2 == 0:
-                    average = (angles[i][0] + angles[i2][0] + 2*math.pi)/2.0
-                    if average > math.pi:
-                        average = average - 2*math.pi
-                else:
-                    average = (angles[i][0] + angles[i2][0])/2.0
-
-
-                centroid = geometry.getCentroidPoints([p1, angles[i][3], angles[i2][3]])#[(p1[0] + other_point[0])/2.0, (p1[1]+other_point[1])/2.0]
-                #print 1,p1, angles[i][3], angles[i2][3]
-                #print 2,centroid, point_to_use.point
-                #print 3,point_to_use.get_current_color(centroid)
-
-                color_regions.append(geometry.ColorRegion(angles[i][1].get_current_color(centroid), angles[i][0], angles[i2][0]))
-
-                #color_reg.extend(all_points[s].color_regions)
-                #print "segs", 0, s
-                #for c in color_reg:
-                #    print c.color
-
-                #color_regions.extend(color_reg)
-            #print len(color_regions)
-            #for c in color_regions:
-            #    print c.color
-            """
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
-
-        """
-        for t in tri_indicies:
-            graph[t[0]].append(t[1])
-            graph[t[0]].append(t[2])
-            graph[t[1]].append(t[0])
-            graph[t[1]].append(t[2])
-            graph[t[2]].append(t[1])
-            graph[t[2]].append(t[0])
-
-
-        bad_points = []
-
-        def color_index(index):
-            if marked[index]:
-                return
-
-            marked[index] = True
-            color_regions = []
-            angles = []
-            p1 = delauny_points[index]
-            for s in graph[index]:
-
-                color_reg = []
-
-                p2 = delauny_points[s]
-
-                angles.append((math.atan2(p2[1]-p1[1], p2[0]-p1[0]), all_points[s], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, p2, p2))
-
-            angles = sorted(angles, key = lambda a: a[0])
-
-            for i in range(len(angles)):
-                i2 = (i + 1) % len(angles)
-                if i2 == 0:
-                    average = (angles[i][0] + angles[i2][0] + 2*math.pi)/2.0
-                    if average > math.pi:
-                        average = average - 2*math.pi
-                else:
-                    average = (angles[i][0] + angles[i2][0])/2.0
-
-                if angles[i][2] > angles[i2][2]:
-                    if angles[i][1] is None:
-                        point_to_use = angles[i2][1]
-                        other_point = angles[i][3]
-                    else:
-                        point_to_use = angles[i][1]
-                        other_point = angles[i2][3]
-                else:
-                    if angles[i2][1] is None:
-                        point_to_use = angles[i][1]
-                        other_point = angles[i2][3]
-                    else:
-                        point_to_use = angles[i2][1]
-                        other_point = angles[i][3]
-
-                if point_to_use is None:
-                    print "FAILURE HERE", angles[i2][1], angles[i][1]
-                    bad_points.append(p1)
-                    continue
-
-                centroid = geometry.getCentroidPoints([p1, angles[i][3], angles[i2][3]])#[(p1[0] + other_point[0])/2.0, (p1[1]+other_point[1])/2.0]
-                #print 1,p1, angles[i][3], angles[i2][3]
-                #print 2,centroid, point_to_use.point
-                #print 3,point_to_use.get_current_color(centroid)
-
-                color_regions.append(geometry.ColorRegion(point_to_use.get_current_color(centroid), angles[i][0], angles[i2][0]))
-
-                #color_reg.extend(all_points[s].color_regions)
-                #print "segs", 0, s
-                #for c in color_reg:
-                #    print c.color
-
-                #color_regions.extend(color_reg)
-            #print len(color_regions)
-            #for c in color_regions:
-            #    print c.color
-            all_points[index] = geometry.TrianglePoint(p1, color_regions)
-        """
 
 
         for i in range(len(self.composite_points), len(all_points)):
                 color_index(i)
 
+        pixel_colors = []
+
+        for p in self.composite_points[starting_value:]:
+            #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
+            pixel_color = [1, 1, 1, 0]
+            for t in self.triangles:
+                pts = t.points
+                tri = [pts[0].point, pts[1].point, pts[2].point]
+                if geometry.pointInTriangle(p.point, tri):
+                    pixel_color = t.get_color_at_point(p.point)
+                    break
+            pixel_colors.append(pixel_color)
+
+
+        glClear(GL_COLOR_BUFFER_BIT)
+        glBegin(GL_TRIANGLES)
+        glColor4f(0,0,0,1)
+
+        for t in first_triangulation['vertices'][first_triangle_indicies]:
+            for p in t:
+                glVertex2f(p[0], p[1])
+
+        glEnd()
+
+        for p in self.composite_points[0:starting_value]:
+            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
+            pixel_color = glReadPixels(windowx-1.5, height - 1.5 - windowy , 3, 3, GL_RGBA, GL_FLOAT)
+            sum = 0
+            for i in range(3):
+                for j in range(3):
+                    sum += pixel_color[i][j][0]
+            if sum == 0 and self.fall_off_radius == 0:
+                p.composite_color(self.color)
+            else:
+                if sum < 9:
+                    for i in first_triangle_indicies:
+                        t = first_triangulation['vertices'][i]
+                        if geometry.pointInTriangle(p.point, t):
+                            t2 = []
+                            for j in range(len(i)):
+                                t2.append(self.composite_points[starting_value+i[j]])
+                            tri = geometry.Triangle(t2)
+                            #p.composite_color(tri.get_color_at_point(p.point))
+                            p.composite_color(tri.get_color_at_point(p.point))
+                            """
+                            centroid = geometry.getCentroidPoints(t)
+                            angle = math.atan2(centroid[1]-t[0][1], centroid[0]-t[0][0])
+                            r = self.composite_points[starting_value+i[0]].color_regions[0]
+                            if (r.start_angle <= angle <= r.end_angle or
+                                (r.end_angle < r.start_angle and
+                                (r.start_angle <= angle+2*math.pi <= r.end_angle+2*math.pi or
+                                 r.start_angle <= angle <= r.end_angle+2*math.pi))):
+                            #if (glReadPixels(centroid[0], height - centroid[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0][0] == 0):
+                                p.composite_color(self.color)
+                                break
+                            """
+
+
+
+        for p,p_c in zip(self.composite_points[starting_value:], pixel_colors):
+
+            for r in p.color_regions:
+                r.color = geometry.color_over(p_c, r.color)
+
+        self.composite_points = all_points
+        self.composite_lines = []
+        for s in segments:
+            self.composite_lines.append(s)
+
+
+        self.triangles = []
         self.bad_points = bad_points
 
         for indices in tri_indicies:
@@ -831,8 +764,6 @@ class Brush:
                 t.append(all_points[i])
 
             self.triangles.append(geometry.Triangle(t))
-
-        #self.composite_points = all_points
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))

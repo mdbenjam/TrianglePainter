@@ -38,6 +38,15 @@ class Triangle:
             point_colors.append(p.get_current_color(centroid))
             index = index + 1
 
+        total_area = triangle_area(self.points[0].point, self.points[1].point, self.points[2].point)
+        for i in range(3):
+            j = (i+1)%3
+            k = (i+2)%3
+            area = triangle_area(point, self.points[j].point, self.points[k].point)
+
+            for h in range(4):
+                color[h] += area/total_area * point_colors[i][h]
+        """
         for i in range(4):
             color_array = numpy.array([point_colors[0][i], point_colors[1][i], point_colors[2][i]])
             try:
@@ -46,6 +55,7 @@ class Triangle:
             except numpy.linalg.linalg.LinAlgError:
                 print 'Color system degenerate. Linalg Error.'
                 color[i] = color_array[0]
+        """
 
         return color
 
@@ -67,11 +77,6 @@ class ColorRegion:
 def composite_ranges(bottom_range, top_range):
     color_ranges = []
 
-    print '--------'
-    for b in bottom_range:
-        print 'start', b.start_angle, 'end', b.end_angle, 'color', b.color
-    for b in top_range:
-        print 'start', b.start_angle, 'end', b.end_angle, 'color', b.color
 
     if not ((bottom_range[0].start_angle <= top_range[0].start_angle <= bottom_range[0].end_angle or
         (bottom_range[0].end_angle < bottom_range[0].start_angle and
@@ -257,3 +262,12 @@ def lineIntersection(self, p1, p2, p3, p4):
         return None
     else:
         return (x,y)
+
+def triangle_area(p1, p2, p3):
+    x1 = p1[0]
+    y1 = p1[1]
+    x2 = p2[0]
+    y2 = p2[1]
+    x3 = p3[0]
+    y3 = p3[1]
+    return abs(.5*(-x2*y1 + x3*y1 + x1*y2 - x3*y2 - x1*y3 + x2*y3))
