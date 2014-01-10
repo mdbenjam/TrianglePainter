@@ -319,6 +319,7 @@ class Brush:
 
 
 
+    @profile
     def clear_stroke(self, window):
 
         #fbo = glGenFramebuffers(1)
@@ -738,9 +739,12 @@ class Brush:
                     flag = True
 
 
-            if not flag:
-                print 'FAILED When determining color range order'
-                print angles
+            if len(angles) == 1:
+                color_regions = [angles[1].color_regions]
+            else:
+                if not flag:
+                    print 'FAILED When determining color range order'
+                    print angles
 
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
 
@@ -870,7 +874,7 @@ class Brush:
         if debug:
             self.save('last_stroke.txt')
 
-        self.simplify()
+        #self.simplify()
 
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
@@ -897,18 +901,41 @@ class Brush:
         def combine_arcs():
             for p in self.composite_points:
                 i = 0
-                while i < len(p.color_regions) and len(p.color_regions) > 1:
-                    j = (i + 1) % len(p.color_regions)
-                    r1 = p.color_regions[i]
-                    r2 = p.color_regions[j]
-                    if deltaE(get_lab_color(r1.color), get_lab_color(r2.color)) < 5:
+
+                regions = [p.color_regions[i]]
+                i = i + 1
+                flag = False
+                while i < len(p.color_regions) and not flag:
+                    flag = True
+                    for j in range(len(p.color_regions)):
+                        if np.dot(p.color_regions[j].start_angle, regions[i-1].end_angle) > .99:
+                            regions.append(p.color_regions[j])
+                            i = i + 1
+                            flag = False
+                            break
+                if flag:
+                    continue
+
+                i = 0
+
+                while i < len(regions) and len(regions) > 1:
+                    j = (i + 1) % len(regions)
+                    r1 = regions[i]
+                    r2 = regions[j]
+                    if deltaE(get_lab_color(r1.color), get_lab_color(r2.color)) < 1:
                         new_color_region = (geometry.ColorRegion(r1.color, r1.start_angle, r2.end_angle))
-                        p.color_regions.pop(j)
-                        p.color_regions.pop(i)
-                        p.color_regions.append(new_color_region)
+                        if i < j:
+                            regions.pop(j)
+                            regions.pop(i)
+                        else:
+                            regions.pop(i)
+                            regions.pop(j)
+                        regions.append(new_color_region)
                         i = 0
                     else:
                         i = i + 1
+
+                p.color_regions = regions
 
         def remove_edges():
             graph = []
