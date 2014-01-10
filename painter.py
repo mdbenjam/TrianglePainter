@@ -12,6 +12,7 @@ import time
 import copy
 import math
 import shutil
+import cProfile
 
 import numpy as np
 import brush
@@ -102,6 +103,8 @@ class Painter:
         postY = y * self.window.zoom_width
         self.window.center_x = self.window.center_x + preX
         self.window.center_y = self.window.center_y - preY
+
+
 
 
     def draw_triangles(self):

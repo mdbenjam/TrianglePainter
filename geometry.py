@@ -2,21 +2,23 @@ __author__ = 'mdbenjam'
 
 from OpenGL.GL import *
 import math
-import numpy
+import numpy as np
 
 class Triangle:
     def __init__(self, points=None,file=None):
         if file == None:
             self.points = points
+            self.centroid = getCentroid(self.points)
+            self.color = []
+            for p in self.points:
+                self.color.append(p.get_current_color(self.centroid))
         else:
             self.load(file)
 
     def draw(self):
-        centroid = getCentroid(self.points)
         for p in self.points:
-            color = p.get_current_color(centroid)
             #print 'c'+str(color)
-            glColor3f(color[0], color[1], color[2])
+            glColor3f(self.color[0], self.color[1], self.color[2])
             glVertex2f(p.point[0], p.point[1])
 
     def draw_color(self, color):
@@ -26,16 +28,15 @@ class Triangle:
 
     # TODO: optimize if all the colors are the same
     def get_color_at_point(self, point):
-        centroid = getCentroid(self.points)
         color = [0,0,0,0]
-        coeff_array = numpy.array([[self.points[0].point[0], self.points[0].point[1], 1],
+        coeff_array = np.array([[self.points[0].point[0], self.points[0].point[1], 1],
                                 [self.points[1].point[0], self.points[1].point[1], 1],
                                 [self.points[2].point[0], self.points[2].point[1], 1]])
         point_colors = []
         index = 0
         for p in self.points:
 
-            point_colors.append(p.get_current_color(centroid))
+            point_colors.append(p.get_current_color(self.centroid))
             index = index + 1
 
         total_area = triangle_area(self.points[0].point, self.points[1].point, self.points[2].point)
@@ -48,11 +49,11 @@ class Triangle:
                 color[h] += area/total_area * point_colors[i][h]
         """
         for i in range(4):
-            color_array = numpy.array([point_colors[0][i], point_colors[1][i], point_colors[2][i]])
+            color_array = np.array([point_colors[0][i], point_colors[1][i], point_colors[2][i]])
             try:
-                results = numpy.linalg.solve(coeff_array, color_array)
+                results = np.linalg.solve(coeff_array, color_array)
                 color[i] = results[0]*point[0] + results[1]*point[1] + results[2]
-            except numpy.linalg.linalg.LinAlgError:
+            except np.linalg.linalg.LinAlgError:
                 print 'Color system degenerate. Linalg Error.'
                 color[i] = color_array[0]
         """
@@ -77,21 +78,17 @@ class ColorRegion:
 def composite_ranges(bottom_range, top_range):
     color_ranges = []
 
-
-    if not ((bottom_range[0].start_angle <= top_range[0].start_angle <= bottom_range[0].end_angle or
-        (bottom_range[0].end_angle < bottom_range[0].start_angle and
-        (bottom_range[0].start_angle <= top_range[0].start_angle+2*math.pi <= bottom_range[0].end_angle+2*math.pi or
-         bottom_range[0].start_angle <= top_range[0].start_angle <= bottom_range[0].end_angle+2*math.pi)))):
-        top_range[0], top_range[1] = top_range[1], top_range[0]
-
-    color_ranges.append(ColorRegion(color_over(bottom_range[0].color, top_range[0].color),
-                                    top_range[0].start_angle, bottom_range[0].end_angle))
-    color_ranges.append(ColorRegion(color_over(bottom_range[1].color, top_range[0].color),
-                                    bottom_range[1].start_angle, top_range[0].end_angle))
-    color_ranges.append(ColorRegion(color_over(bottom_range[1].color, top_range[1].color),
-                                    top_range[1].start_angle, bottom_range[1].end_angle))
-    color_ranges.append(ColorRegion(color_over(bottom_range[0].color, top_range[1].color),
-                                    bottom_range[0].start_angle, top_range[1].end_angle))
+    for t in top_range:
+        for b in bottom_range:
+            if angle_between(b.start_angle, t.start_angle, b.end_angle):
+                if angle_between(b.start_angle, t.end_angle, b.end_angle):
+                    color_ranges.append(ColorRegion(color_over(b.color, t.color), t.start_angle, t.end_angle))
+                color_ranges.append(ColorRegion(color_over(b.color, t.color), t.start_angle, b.end_angle))
+            elif angle_between(b.start_angle, t.end_angle, b.end_angle):
+                color_ranges.append(ColorRegion(color_over(b.color, t.color), b.start_angle, t.end_angle))
+            elif (angle_between(t.start_angle, b.start_angle, t.end_angle) and
+                angle_between(t.start_angle, b.end_angle, t.end_angle)):
+                color_ranges.append(ColorRegion(color_over(b.color, t.color), b.start_angle, b.end_angle))
 
     return color_ranges
 
@@ -112,12 +109,19 @@ def getCentroidPoints(tri):
 
     return [centroid[0]/3.0, centroid[1]/3.0]
 
+"""
+Is angle b between a and c
+"""
+def angle_between(a, b, c):
+    s_cross_e = np.cross(a, c)
+    if s_cross_e < 0:
+        mid = -(a+c)/2.0
+        return angle_between(a, b, mid) or angle_between(mid, b, c)
+    return (np.cross(a, b) >= 0 and np.cross(b,c) >= 0)
+
 def get_color(regions, angle):
     for r in regions:
-        if (r.start_angle <= angle <= r.end_angle or
-                (r.end_angle < r.start_angle and
-                (r.start_angle <= angle+2*math.pi <= r.end_angle+2*math.pi or
-                 r.start_angle <= angle <= r.end_angle+2*math.pi))):
+        if angle_between(r.start_angle, angle, r.end_angle):
             return r.color
     return regions[0].color
 
@@ -143,10 +147,9 @@ class TrianglePoint:
             self.load(file)
 
     def get_current_color(self, centroid):
-        return get_color(self.color_regions, math.atan2(centroid[1]-self.point[1], centroid[0]-self.point[0]))
+        return get_color(self.color_regions, np.array([centroid[0]-self.point[0], centroid[1]-self.point[1]]))
 
     def composite_color(self, color):
-        alpha = color[3]
         for r in self.color_regions:
             r.color = color_over(r.color, color)
 

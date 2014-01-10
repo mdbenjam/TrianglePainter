@@ -5,11 +5,14 @@ import numpy as np
 import triangle
 from skimage import measure
 from OpenGL.GL import *
-from OpenGL.GLUT import *
+from OpenGL.arrays import vbo
 import copy
 import math
 import sys
 import geometry
+from profilehooks import profile
+
+debug = False
 
 class Brush:
 
@@ -33,6 +36,9 @@ class Brush:
         self.fall_off_radius = fall_off_radius
         self.num_sides = num_sides
         self.bad_points = []
+        self.colored_points = []
+        self.point_data = []
+        self.triangle_vertices_vbo = None
 
         self.show_index = 0
 
@@ -109,21 +115,36 @@ class Brush:
 
     def cycle(self, amount):
         self.show_index = (self.show_index + amount) % len(self.composite_points)
+        index = self.show_index % len(self.colored_points)
+        if index < len(self.colored_points):
+            h = self.colored_points[index]
+            print h[4], h[5], h[6]
+            for r in self.composite_points[h[7]].color_regions:
+                print r.start_angle, r.end_angle, r.color
+            print self.point_data[h[7]]
+            print '----'
         print self.show_index
 
     def draw_triangles(self, flag):
-        glBegin(GL_TRIANGLES)
-        for t in self.triangles:
-            t.draw()
-        glEnd()
+        if not (self.triangle_vertices_vbo is None):
+            glEnableClientState(GL_VERTEX_ARRAY)
+            glEnableClientState(GL_COLOR_ARRAY)
+            self.triangle_vertices_vbo.bind()
 
-        glPointSize(3.0)
-        glBegin(GL_POINTS)
-        glColor3f(1,0,0)
-        for p in self.bad_points:
-            glVertex2f(p[0], p[1])
-        glEnd()
-        glPointSize(1.0)
+            try:
+                glVertexPointer(2, GL_FLOAT, 20, self.triangle_vertices_vbo)
+                glColorPointer(3, GL_FLOAT, 20, self.triangle_vertices_vbo+8)
+                glDrawArrays(GL_TRIANGLES, 0, len(self.triangles)*3)
+            finally:
+                self.triangle_vertices_vbo.unbind()
+                glDisableClientState(GL_VERTEX_ARRAY)
+                glDisableClientState(GL_COLOR_ARRAY)
+
+        #glBegin(GL_TRIANGLES)
+        #for t in self.triangles:
+        #    t.draw()
+        #glEnd()
+
 
         if flag:
             """
@@ -158,9 +179,9 @@ class Brush:
                     angle1 = t.color_regions[0].start_angle
                     angle2 = t.color_regions[0].end_angle
                     glVertex2f(t.point[0], t.point[1])
-                    glVertex2f(t.point[0]+math.cos(angle1)*length, t.point[1]+math.sin(angle1)*length)
+                    glVertex2f(t.point[0]+angle1[0]*length, t.point[1]+angle1[1]*length)
                     glVertex2f(t.point[0], t.point[1])
-                    glVertex2f(t.point[0]+math.cos(angle2)*length, t.point[1]+math.sin(angle2)*length)
+                    glVertex2f(t.point[0]+angle2[0]*length, t.point[1]+angle2[1]*length)
                     glEnd()
                     glLineWidth(1)
                     glBegin(GL_POINTS)
@@ -180,6 +201,20 @@ class Brush:
             glPointSize(1.0)
 
 
+            glPointSize(3.0)
+            glBegin(GL_POINTS)
+            index = 1#self.show_index % len(self.colored_points)
+            if index < len(self.colored_points):
+                h = self.colored_points[index]
+                glColor3f(1,.5,0)
+                glVertex2f(h[0][0], h[0][1])
+                glVertex2f(h[1][0], h[1][1])
+                glColor3f(0,1,1)
+                glVertex2f(h[2][0], h[2][1])
+                glVertex2f(h[3][0], h[3][1])
+
+            glEnd()
+            glPointSize(1.0)
 
 
             """
@@ -227,12 +262,14 @@ class Brush:
         points = []
         count = 0
         zoom = window.width/window.zoom_width
+        """
         for p in self.brushPoints:
             count = count + 1
             point = window.to_world_coords(mouse.mouseX + p[0]*zoom, mouse.mouseY + p[1]*zoom)
             #self.addNotCoveredPoint(point, count==len(self.brushPoints))
             points.append(point)
         self.current_quads.append(points)
+        """
         self.lastMouse = copy.deepcopy(mouse)
 
 
@@ -280,7 +317,7 @@ class Brush:
 
 
 
-
+    @profile
     def clear_stroke(self, window):
 
         #fbo = glGenFramebuffers(1)
@@ -289,7 +326,8 @@ class Brush:
         #glClearColor(1.0, 1.0, 1.0, 1.0)
         #TODO: REMOVE 480
         #glViewport(0, 0, 640, 480)
-        self.save_action('hold.txt')
+        if debug:
+            self.save_action('hold.txt')
         glClear(GL_COLOR_BUFFER_BIT)
         self.draw_stroke(black=True)
 
@@ -483,15 +521,14 @@ class Brush:
         #glutSwapBuffers()
 
 
-        angles = np.empty([len(self.triangle_points), 2])
+        angles = np.empty([len(self.triangle_points), 2, 2])
         for l in lines:
             p1 = self.triangle_points[l[0]]
             p2 = self.triangle_points[l[1]]
-            angle = math.atan2(p1[1]-p2[1], p1[0]-p2[0])
-            angles[l[0], 1] = (angle + math.pi) % (2*math.pi)
-            if angles[l[0], 1] > math.pi:
-                angles[l[0], 1] = angles[l[0], 1] - 2*math.pi
-            angles[l[1], 0] = angle
+            angle = np.array([p1[0]-p2[0], p1[1]-p2[1]])
+            angle = angle / np.linalg.norm(angle)
+            angles[l[0], 1, :] = -1*angle
+            angles[l[1], 0, :] = angle
 
 
         index = 0
@@ -512,7 +549,6 @@ class Brush:
             t = geometry.TrianglePoint(p,regions)
             self.composite_points.append(t)
             index = index + 1
-
 
 
 
@@ -564,8 +600,10 @@ class Brush:
         graph = []
         marked = []
         all_points = []
+        self.point_data = []
         for i in range(len(delauny_points)):
             graph.append([])
+            self.point_data.append([])
             if i < len(self.composite_points):
                 all_points.append(self.composite_points[i])
                 marked.append(True)
@@ -594,42 +632,70 @@ class Brush:
 
                 p2 = delauny_points[s]
 
-                angle = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
+                angle = np.array([p2[0]-p1[0], p2[1]-p1[1]])
+                norm = np.linalg.norm(angle)
+                if norm == 0:
+                    continue
+                angle = angle/norm
                 i = s
                 last_i = i
                 while i >= len(self.composite_points):
                     angle2 = []
-                    print i, 'angle', angle
                     for b in graph[i]:
                         p2 = delauny_points[b]
-                        hold = math.atan2(p2[1]-p1[1], p2[0]-p1[0])
-                        print b, hold
-                        angle2.append(abs(hold-angle))
+                        hold = np.array([p2[0]-p1[0], p2[1]-p1[1]])
+                        hold = hold/np.linalg.norm(hold)
+                        angle2.append(np.dot(hold, angle))
                     if graph[i][0] != last_i:
-                        min_angle = angle2[0]
-                        min_index = 0
+                        max_dot = angle2[0]
+                        max_index = 0
                     else:
-                        min_angle = angle2[1]
-                        min_index = 1
+                        max_dot = angle2[1]
+                        max_index = 1
                     for a in range(1,len(angle2)):
-                        if angle2[a] < min_angle and graph[i][a] != last_i:
-                            min_angle = angle2[a]
-                            min_index = a
+                        if angle2[a] > max_dot and graph[i][a] != last_i:
+                            max_dot = angle2[a]
+                            max_index = a
                     last_i = i
-                    i = graph[i][min_index]
+                    i = graph[i][max_index]
                     print 'chose', i
 
                 p2 = delauny_points[i]
 
                 angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
 
-                def gen_color_range(angle1, angle2, p):
+                def gen_color_range(angle1, angle2, p, index):
+                    """
                     c_r1 = angle1[1].color_regions
                     c_r2 = angle2[1].color_regions
-                    dx = math.cos(angle1[0]+math.pi/2)
-                    dy = math.sin(angle1[0]+math.pi/2)
-                    c1 = angle1[1].get_current_color([p[0]+dx, p[1]+dy])#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
-                    c2 = angle1[1].get_current_color([p[0]+dx, p[1]+dy])#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
+                    minimum = 1
+                    min_index = 0
+                    for i in range(len(c_r1)):
+                        r = c_r1[i]
+                        hold = abs(r.end_angle - angle1[0])
+                        if hold < minimum:
+                            minimum = hold
+                            min_index = i
+                    c1 = c_r1[min_index].color
+
+                    minimum = 1
+                    min_index = 0
+                    for i in range(len(c_r2)):
+                        r = c_r2[i]
+                        hold = abs(r.start_angle - angle2[0])
+                        if hold < minimum:
+                            minimum = hold
+                            min_index = i
+                    c2 = c_r2[min_index].color
+                    """
+
+                    dx = angle1[0][0]
+                    dy = angle1[0][1]
+                    p2 = [p[0]-dy, p[1]+dx]
+                    centroid1 = geometry.getCentroidPoints([p, p2, angle1[1].point])
+                    centroid2 = geometry.getCentroidPoints([p, p2, angle2[1].point])
+                    c1 = angle1[1].get_current_color(p2)#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
+                    c2 = angle2[1].get_current_color(p2)#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
                     dist = math.sqrt ((angle1[1].point[0] - angle2[1].point[0])**2
                                       + (angle1[1].point[1] - angle2[1].point[1])**2)
                     d1 = math.sqrt (angle1[2])
@@ -638,46 +704,40 @@ class Brush:
                         r1 = .5
                         r2 = .5
                     else:
-                        r1 = d1/dist
-                        r2 = d2/dist
+                        r1 = d2/dist
+                        r2 = d1/dist
                     color = [c1[0] * r1 + c2[0] * r2, c1[1] * r1 + c2[1] * r2, c1[2] * r1 + c2[2] * r2, c1[3] * r1 + c2[3] * r2]
+                    self.colored_points.append([p, p2, angle1[1].point, angle2[1].point, c1, c2, color, index])
                     return geometry.ColorRegion(color, angle1[0], angle2[0])
 
-                def get_other_range(other_indices, range1, p):
+                def get_other_range(other_indices, range1, p, index):
                     if len(other_indicies) == 2:
-                        if abs(angles[other_indicies[0]][0] - angles[other_indicies[1]][0] - math.pi) < .001:
-                            range2 = [gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]], p),
-                                      gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]], p)]
-                        elif abs(angles[other_indicies[1]][0] - angles[other_indicies[0]][0] - math.pi) < .001:
-                            range2 = [gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]], p),
-                                      gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]], p)]
-                        else:
-                            print 'FAILURE'
-                        if other_indicies[0] < starting_value:
-                            return geometry.composite_ranges(range1, range2)
-                        else:
+                        range2 = [gen_color_range(angles[other_indicies[0]], angles[other_indicies[1]], p, index),
+                                  gen_color_range(angles[other_indicies[1]], angles[other_indicies[0]], p, index)]
+                        self.point_data[index].append(True)
+                        if angles[other_indicies[0]][4] < starting_value:
                             return geometry.composite_ranges(range2, range1)
+                        else:
+                            return geometry.composite_ranges(range1, range2)
 
                     else:
+                        self.point_data[index].append(False)
                         return [range1]
 
-                flag = False
-                for i in range(1,len(angles)):
-                    a = angles[i]
-                    other_indicies = range(1, len(angles))
-                    if abs(a[0] - angles[0][0] - math.pi) < .001:
-                        range1 = [gen_color_range(angles[0], a, p1), gen_color_range(a, angles[0], p1)]
-                        other_indicies.remove(i)
-                        color_regions = get_other_range(other_indicies, range1, p1)
-                        flag = True
+            flag = False
+            for i in range(1,len(angles)):
+                a = angles[i]
+                other_indicies = range(1, len(angles))
+                if np.dot(a[0], angles[0][0]) < -.999:
+                    range1 = [gen_color_range(angles[0], a, p1, index), gen_color_range(a, angles[0], p1, index)]
+                    other_indicies.remove(i)
+                    color_regions = get_other_range(other_indicies, range1, p1, index)
+                    flag = True
 
-                    elif abs(angles[0][0] - a[0] - math.pi) < .001:
-                        range1 = [gen_color_range(a, angles[0], p1), gen_color_range(angles[0], a, p1)]
-                        other_indicies.remove(i)
-                        color_regions = get_other_range(other_indicies, range1, p1)
-                        flag = True
-                if not flag:
-                    print 'FAILED When determining color range order'
+
+            if not flag:
+                print 'FAILED When determining color range order'
+                print angles
 
             all_points[index] = geometry.TrianglePoint(p1, color_regions)
 
@@ -688,14 +748,18 @@ class Brush:
         pixel_colors = []
 
         for p in self.composite_points[starting_value:]:
+            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
+            pixel_color = glReadPixels(windowx-.5, height - .5 - windowy , 3, 3, GL_RGBA, GL_FLOAT)[1][1]
             #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
-            pixel_color = [1, 1, 1, 0]
+            #pixel_color = [1, 1, 1, 0]
+            """
             for t in self.triangles:
                 pts = t.points
                 tri = [pts[0].point, pts[1].point, pts[2].point]
                 if geometry.pointInTriangle(p.point, tri):
                     pixel_color = t.get_color_at_point(p.point)
                     break
+            """
             pixel_colors.append(pixel_color)
 
 
@@ -745,9 +809,10 @@ class Brush:
 
 
         for p,p_c in zip(self.composite_points[starting_value:], pixel_colors):
-
+            index = 0
             for r in p.color_regions:
                 r.color = geometry.color_over(p_c, r.color)
+                index = index + 1
 
         self.composite_points = all_points
         self.composite_lines = []
@@ -768,12 +833,49 @@ class Brush:
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))
 
+        np_vbo = np.empty((len(self.triangles)*3, 5), dtype=np.float32)
+
+        for index in range(len(self.triangles)):
+            points = self.triangles[index].points
+            colors = self.triangles[index].color
+            np_vbo[index*3, 0:2] = points[0].point
+            np_vbo[index*3, 2:5] = colors[0][0:3]
+            np_vbo[index*3+1, 0:2] = points[1].point
+            np_vbo[index*3+1, 2:5] = colors[1][0:3]
+            np_vbo[index*3+2, 0:2] = points[2].point
+            np_vbo[index*3+2, 2:5] = colors[2][0:3]
+
+        print np_vbo
+        self.triangle_vertices_vbo = vbo.VBO(np_vbo)
+
+
         self.current_quads = []
         self.fall_off_current_quads = []
-        self.save('last_stroke.txt')
+        if debug:
+            self.save('last_stroke.txt')
 
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
+
+    def simplify(self):
+        def get_lab_color(c):
+            coeff = np.array([[0.4360747, 0.3850649, 0.1430804, 0], [0.2225045, 0.7168786, 0.0606169, 0], [0.0139322, 0.0971045, 0.7141733, 0]])
+            rgb = np.array(c)
+            xyz = np.multiply(coeff, rgb)
+            X = xyz[0]
+            Y = xyz[1]
+            Z = xyz[2]
+            sqrtY = np.sqrt(Y)
+            L = 100*sqrtY
+            a = 172.30*(X-Y)/sqrtY
+            b = 67.20*(Y-Z)/sqrtY
+            return L,a,b
+
+        def deltaE(c1, c2):
+            return numpy.linalg.norm(c1-c2)
+
+
+
 
     def save(self, out_name):
 
@@ -825,6 +927,11 @@ class Brush:
             for p in q:
                 f.write(str(p[0]) + ',' + str(p[1])+'\n')
 
+        f.write(str(len(self.fall_off_current_quads))+'\n')
+        f.write(str(self.color[0])+','+str(self.color[1])+','+str(self.color[2])+','+str(0)+'\n')
+        for q in self.fall_off_current_quads:
+            for p in q:
+                f.write(str(p[0]) + ',' + str(p[1])+'\n')
         f.close()
 
     def load_action(self, in_name, window):
@@ -833,6 +940,7 @@ class Brush:
         self.composite_lines = []
         self.triangles = []
         self.current_quads = []
+        self.fall_off_current_quads = []
         num_points = int(f.readline())
         for i in range(num_points):
             self.composite_points.append(geometry.TrianglePoint(file=f))
@@ -857,6 +965,17 @@ class Brush:
                 s = line.split(',')
                 q.append([float(s[0]), float(s[1])])
             self.current_quads.append(q)
+
+        num_quads = int(f.readline())
+        color = f.readline().split(',')
+        #self.color = [float(color[0]), float(color[1]), float(color[2]), float(color[3])]
+        for i in range(num_quads):
+            q = []
+            for j in range(4):
+                line = f.readline()
+                s = line.split(',')
+                q.append([float(s[0]), float(s[1])])
+            self.fall_off_current_quads.append(q)
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
