@@ -66,6 +66,7 @@ class Painter:
         self.width = 0
         self.height = 0
         self.fuzzy = 1
+        self.transparent = .5
 
     def output(self, x, y, text):
         glRasterPos2f(x, y, 0)
@@ -206,13 +207,19 @@ class Painter:
             self.brush.set_size(new_size, new_size*2*self.fuzzy)
 
         if args[0] == 'r':
-            self.brush.change_color((1,0,0,0.5))
+            self.brush.change_color((1,0,0,self.transparent))
         if args[0] == 'g':
-            self.brush.change_color((0,1,0,0.5))
+            self.brush.change_color((0,1,0,self.transparent))
         if args[0] == 'b':
-            self.brush.change_color((0,0,1,0.5))
+            self.brush.change_color((0,0,1,self.transparent))
         if args[0] == 'l':
-            self.brush.change_color((0,0,0,0.5))
+            self.brush.change_color((0,0,0,self.transparent))
+        if args[0] == 't':
+            if self.transparent < 1:
+                self.transparent = 1
+            else:
+                self.transparent = .5
+            self.brush.change_color([self.brush.color[0], self.brush.color[1], self.brush.color[2], self.transparent])
         if args[0] == 'c':
             self.brush.cycle(1)
         if args[0] == 'x':
@@ -301,8 +308,8 @@ def main():
 
     glutInit(())
 
-    window_width = 640
-    window_height = 480
+    window_width = 1280
+    window_height = 960
     window_params = Window(window_width, window_height, window_width, window_height, 0, 0)
 
     out_name = "last_stroke.txt"#raw_input("FileName: ")

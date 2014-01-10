@@ -201,6 +201,7 @@ class Brush:
             glPointSize(1.0)
 
 
+            """
             glPointSize(3.0)
             glBegin(GL_POINTS)
             index = 1#self.show_index % len(self.colored_points)
@@ -215,6 +216,7 @@ class Brush:
 
             glEnd()
             glPointSize(1.0)
+            """
 
 
             """
@@ -317,7 +319,6 @@ class Brush:
 
 
 
-    @profile
     def clear_stroke(self, window):
 
         #fbo = glGenFramebuffers(1)
@@ -540,11 +541,11 @@ class Brush:
                            geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
             else:
                 if index < size_of_core:
-                    regions = [geometry.ColorRegion(self.color, angles[index,0], angles[index,1]),
-                               geometry.ColorRegion(self.color, angles[index,1], angles[index,0])]
+                    regions = [geometry.ColorRegion(self.color, angles[index,0], angles[index,0])]
+                               #geometry.ColorRegion(self.color, angles[index,1], angles[index,0])]
                 else:
-                    regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,1]),
-                               geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
+                    regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,0])]
+                               #geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
 
             t = geometry.TrianglePoint(p,regions)
             self.composite_points.append(t)
@@ -644,7 +645,10 @@ class Brush:
                     for b in graph[i]:
                         p2 = delauny_points[b]
                         hold = np.array([p2[0]-p1[0], p2[1]-p1[1]])
-                        hold = hold/np.linalg.norm(hold)
+                        norm = np.linalg.norm(hold)
+                        if norm == 0:
+                            continue
+                        hold = hold/norm
                         angle2.append(np.dot(hold, angle))
                     if graph[i][0] != last_i:
                         max_dot = angle2[0]
@@ -658,7 +662,6 @@ class Brush:
                             max_index = a
                     last_i = i
                     i = graph[i][max_index]
-                    print 'chose', i
 
                 p2 = delauny_points[i]
 
@@ -747,19 +750,33 @@ class Brush:
 
         pixel_colors = []
 
+        #glClear(GL_COLOR_BUFFER_BIT)
+        #self.draw_triangles(False)
+
+        #read_pixels = glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT)
+
         for p in self.composite_points[starting_value:]:
-            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
-            pixel_color = glReadPixels(windowx-.5, height - .5 - windowy , 3, 3, GL_RGBA, GL_FLOAT)[1][1]
-            #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
-            #pixel_color = [1, 1, 1, 0]
             """
+            (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
+            pixel_color = read_pixels[round(windowx)][round(height-windowy)]
+            print pixel_color
+            flag = True
+            for i in range(3):
+                for j in range(3):
+                    if np.all(pixel_color != read_pixels[round(windowx-1.5+i)][round(height-1.5-windowy+j)]):
+                        flag = False
+                        break
+
+            if not flag:
+            """
+            #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
+            pixel_color = [1, 1, 1, 0]
             for t in self.triangles:
                 pts = t.points
                 tri = [pts[0].point, pts[1].point, pts[2].point]
                 if geometry.pointInTriangle(p.point, tri):
                     pixel_color = t.get_color_at_point(p.point)
                     break
-            """
             pixel_colors.append(pixel_color)
 
 
@@ -845,7 +862,6 @@ class Brush:
             np_vbo[index*3+2, 0:2] = points[2].point
             np_vbo[index*3+2, 2:5] = colors[2][0:3]
 
-        print np_vbo
         self.triangle_vertices_vbo = vbo.VBO(np_vbo)
 
 
@@ -854,6 +870,8 @@ class Brush:
         if debug:
             self.save('last_stroke.txt')
 
+        self.simplify()
+
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
 
@@ -861,19 +879,91 @@ class Brush:
         def get_lab_color(c):
             coeff = np.array([[0.4360747, 0.3850649, 0.1430804, 0], [0.2225045, 0.7168786, 0.0606169, 0], [0.0139322, 0.0971045, 0.7141733, 0]])
             rgb = np.array(c)
-            xyz = np.multiply(coeff, rgb)
+            xyz = np.dot(coeff, rgb)
             X = xyz[0]
             Y = xyz[1]
             Z = xyz[2]
             sqrtY = np.sqrt(Y)
             L = 100*sqrtY
+            if sqrtY == 0:
+                sqrtY = .001
             a = 172.30*(X-Y)/sqrtY
             b = 67.20*(Y-Z)/sqrtY
-            return L,a,b
+            return np.array([L,a,b])
 
         def deltaE(c1, c2):
-            return numpy.linalg.norm(c1-c2)
+            return np.linalg.norm(c1-c2)
 
+        def combine_arcs():
+            for p in self.composite_points:
+                i = 0
+                while i < len(p.color_regions) and len(p.color_regions) > 1:
+                    j = (i + 1) % len(p.color_regions)
+                    r1 = p.color_regions[i]
+                    r2 = p.color_regions[j]
+                    if deltaE(get_lab_color(r1.color), get_lab_color(r2.color)) < 5:
+                        new_color_region = (geometry.ColorRegion(r1.color, r1.start_angle, r2.end_angle))
+                        p.color_regions.pop(j)
+                        p.color_regions.pop(i)
+                        p.color_regions.append(new_color_region)
+                        i = 0
+                    else:
+                        i = i + 1
+
+        def remove_edges():
+            graph = []
+            for i in range(len(self.composite_points)):
+                graph.append([])
+
+            for s in self.composite_lines:
+                graph[s[0]].append(s[1])
+                graph[s[1]].append(s[0])
+
+            new_points = []
+            keep_seg = []
+
+            rem = 0
+            rem_partial_sum = []
+            for i in range(len(self.composite_points)):
+                p = self.composite_points[i]
+                new_points.append(p)
+                keep_seg.append(True)
+                rem_partial_sum.append(rem)
+                if len(p.color_regions) == 1:
+                    p2 = None
+                    if len(graph[i]) > 0:
+                        p2_index = graph[i][0]
+                        p2 = self.composite_points[p2_index]
+                    """
+                    for j in graph[i]:
+                        if len(self.composite_points[j].color_regions) == 1:
+                            p2 = self.composite_points[j]
+                            p2_index = j
+                            break
+                    """
+                    if not p2 is None:
+
+                        new_points.pop()
+                        keep_seg[i] = False
+                        rem = rem + 1
+
+                        for j in graph[i]:
+                            graph[j].remove(i)
+
+            self.composite_points = new_points
+            segs = []
+
+            for i in range(len(keep_seg)):
+                if keep_seg[i]:
+                    for j in graph[i]:
+                        if keep_seg[j]:
+                            segs.append([i-rem_partial_sum[i], j-rem_partial_sum[j]])
+
+            self.composite_lines = segs
+
+
+        combine_arcs()
+        remove_edges()
 
 
 
