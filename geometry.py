@@ -69,6 +69,58 @@ class Triangle:
         for i in range(3):
             self.points.append(TrianglePoint(file=f))
 
+class Grid:
+
+    def __init__(self, cols, rows, width, height, triangles, is_triangle = False):
+        self.x_width = width / float(cols)
+        self.y_height = height / float(rows)
+        self.triangles = triangles
+        self.is_triangle = is_triangle
+
+        self.grid = []
+        for c in range(cols):
+            self.grid.append([])
+            for r in range(rows):
+                self.grid[c].append([])
+
+        for i, t in enumerate(triangles):
+            if is_triangle:
+                pts = t.points
+                p = [pts[0].point, pts[1].point, pts[2].point]
+            else:
+                p = t
+
+            xs = [p[0][0], p[1][0], p[2][0]]
+            ys = [p[0][1], p[1][1], p[2][1]]
+            min_x = np.min(xs)
+            min_y = np.min(ys)
+            max_x = np.max(xs)
+            max_y = np.max(ys)
+
+            x1 = int(min_x / self.x_width)
+            x2 = int(max_x / self.x_width)
+
+            y1 = int(min_y / self.y_height)
+            y2 = int(max_y / self.y_height)
+
+            for x in range(x1, x2):
+                for y in range(y1, y2):
+                    self.grid[x][y].append(i)
+
+    def point_in_triangle_acc(self, p):
+        x = int(p[0]/self.x_width)
+        y = int(p[1]/self.y_height)
+        for i in self.grid[x][y]:
+            if self.is_triangle:
+                pts = self.triangles[i].points
+                if pointInTriangle(p, [pts[0].point, pts[1].point, pts[2].point]):
+                    return self.triangles[i]
+            else:
+                if pointInTriangle(p, self.triangles[i]):
+                    return self.triangles[i]
+
+        return None
+
 class ColorRegion:
     def __init__(self, color, start_angle, end_angle):
         self.color = color

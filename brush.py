@@ -759,6 +759,8 @@ class Brush:
 
         #read_pixels = glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT)
 
+        grid = geometry.Grid(20, 20, width, height, self.triangles, True)
+
         for p in self.composite_points[starting_value:]:
             """
             (windowx, windowy) = window.to_window_coords(p.point[0], p.point[1])
@@ -775,6 +777,7 @@ class Brush:
             """
             #pixel_color = glReadPixels(p[0], 479 - p[1], 1, 1, GL_RGBA, GL_FLOAT)[0][0]
             pixel_color = [1, 1, 1, 0]
+            t = grid.point_in_triangle_acc(p.point)
             for t in self.triangles:
                 pts = t.points
                 tri = [pts[0].point, pts[1].point, pts[2].point]
