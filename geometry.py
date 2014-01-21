@@ -9,16 +9,23 @@ class Triangle:
         if file == None:
             self.points = points
             self.centroid = getCentroid(self.points)
+            self.color = None
+        else:
+            self.load(file)
+
+    def get_colors(self):
+        if self.color is None:
             self.color = []
             for p in self.points:
                 self.color.append(p.get_current_color(self.centroid))
-        else:
-            self.load(file)
+        return self.color
+
 
     def draw(self):
         for p in self.points:
             #print 'c'+str(color)
-            glColor3f(self.color[0], self.color[1], self.color[2])
+            color = self.get_colors()
+            glColor3f(color[0], color[1], color[2])
             glVertex2f(p.point[0], p.point[1])
 
     def draw_color(self, color):
@@ -71,9 +78,12 @@ class Triangle:
 
 class Grid:
 
-    def __init__(self, cols, rows, width, height, triangles, is_triangle = False):
-        self.x_width = width / float(cols)
-        self.y_height = height / float(rows)
+    def __init__(self, cols, rows, window, triangles, is_triangle = False):
+        self.cols = cols
+        self.rows = rows
+        self.window = window
+        self.x_width = window.zoom_width / float(cols)
+        self.y_height = window.zoom_height / float(rows)
         self.triangles = triangles
         self.is_triangle = is_triangle
 
@@ -92,10 +102,10 @@ class Grid:
 
             xs = [p[0][0], p[1][0], p[2][0]]
             ys = [p[0][1], p[1][1], p[2][1]]
-            min_x = np.min(xs)
-            min_y = np.min(ys)
-            max_x = np.max(xs)
-            max_y = np.max(ys)
+            min_x = np.min(xs) - window.center_x
+            min_y = np.min(ys) - window.center_y
+            max_x = np.max(xs) - window.center_x
+            max_y = np.max(ys) - window.center_y
 
             x1 = int(min_x / self.x_width)
             x2 = int(max_x / self.x_width)
@@ -103,13 +113,13 @@ class Grid:
             y1 = int(min_y / self.y_height)
             y2 = int(max_y / self.y_height)
 
-            for x in range(x1, x2):
-                for y in range(y1, y2):
+            for x in range(x1, x2+1):
+                for y in range(y1, y2+1):
                     self.grid[x][y].append(i)
 
     def point_in_triangle_acc(self, p):
-        x = int(p[0]/self.x_width)
-        y = int(p[1]/self.y_height)
+        x = int((p[0] - self.window.center_x)/self.x_width)
+        y = int((p[1] - self.window.center_y)/self.y_height)
         for i in self.grid[x][y]:
             if self.is_triangle:
                 pts = self.triangles[i].points
@@ -120,6 +130,20 @@ class Grid:
                     return self.triangles[i]
 
         return None
+
+    def point_int_grid_cell(self, p):
+        x = int((p[0] - self.window.center_x)/self.x_width)
+        y = int((p[1] - self.window.center_y)/self.y_height)
+        return len(self.grid[x][y]) == 0
+
+    def get_unmodified_triangles(self, other):
+        triangles = []
+        for i in range(self.cols):
+            for j in range(self.rows):
+                if len(self.grid[i][j]) == 0:
+                    for k in other.grid[i][j]:
+                        triangles.append(other.triangles[k])
+        return triangles
 
 class ColorRegion:
     def __init__(self, color, start_angle, end_angle):
