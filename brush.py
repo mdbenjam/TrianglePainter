@@ -5,6 +5,7 @@ import numpy as np
 import triangle
 from skimage import measure
 from OpenGL.GL import *
+from OpenGL.GLUT import *
 from OpenGL.arrays import vbo
 import copy
 import math
@@ -28,6 +29,7 @@ class Brush:
         self.boundary = None
         self.arrayPoints = None
         self.composite_points = []
+        self.delauny_points = []
         self.composite_lines = []
         self.current_quads = []
         self.fall_off_current_quads = []
@@ -45,6 +47,50 @@ class Brush:
         self.fall_off_brush_points = self.make_brush(self.num_sides, self.fall_off_radius)
 
         self.window = window
+
+        """
+        range = [geometry.ColorRegion((1, 1, 1, 1), [1, 0], [1, 0])]
+
+        self.composite_points.append(geometry.TrianglePoint([window.center_x-window.zoom_width/2, window.center_y-window.zoom_height/2], range, 0))
+        self.composite_points.append(geometry.TrianglePoint([window.center_x+window.zoom_width/2-1, window.center_y-window.zoom_height/2], range, 1))
+        self.composite_points.append(geometry.TrianglePoint([window.center_x+window.zoom_width/2-1, window.center_y+window.zoom_height/2-1], range, 2))
+        self.composite_points.append(geometry.TrianglePoint([window.center_x-window.zoom_width/2, window.center_y+window.zoom_height/2-1], range, 3))
+
+        self.composite_lines.append([0, 1])
+        self.composite_lines.append([1, 2])
+        self.composite_lines.append([2, 3])
+        self.composite_lines.append([3, 0])
+
+        verts = np.empty([len(self.composite_points), 2])
+        i = 0
+        for t in self.composite_points:
+            verts[i, 0] = t.point[0]
+            verts[i, 1] = t.point[1]
+
+            i = i + 1
+
+        line_array = np.empty([len(self.composite_lines), 2])
+        i = 0
+        for l in self.composite_lines:
+            line_array[i, 0] = l[0]
+            line_array[i, 1] = l[1]
+            i = i + 1
+
+        A = dict(vertices = verts, segments = line_array)
+        triangulation = triangle.triangulate(A, 'p')
+
+        tri_indicies = triangulation['triangles']
+        delauny_points = triangulation['vertices']
+        self.delauny_points.extend(delauny_points)
+
+        for indices in tri_indicies:
+            t = []
+            for i in indices:
+                t.append(self.composite_points[i])
+            self.triangles.append(geometry.Triangle(t))
+
+        self.setup_vbo()
+        """
 
 
     def make_brush(self, num_sides, brush_radius):
@@ -123,6 +169,17 @@ class Brush:
             print self.point_data[h[7]]
             print '----'
         print self.show_index
+
+    def draw_and_wait(self, triangles):
+        glClear(GL_COLOR_BUFFER_BIT)
+        glBegin(GL_TRIANGLES)
+        glColor3f(1,0,1)
+        for t in triangles:
+            t.draw()
+
+        glEnd()
+        glutSwapBuffers()
+        raw_input('press any key')
 
     def draw_triangles(self, flag):
         if not (self.triangle_vertices_vbo is None):
@@ -340,11 +397,18 @@ class Brush:
 
         def draw_and_read():
             glClear(GL_COLOR_BUFFER_BIT)
+            self.timer_start()
             self.draw_stroke(black=True)
+            self.timer_end()
+            print '^ draw time'
+            self.timer_start()
             array = glReadPixels(0, 0, width, width, GL_RGBA, GL_FLOAT)
+            self.timer_end()
+            print '^ read time'
 
             return array
 
+        self.timer_end()
         values = draw_and_read()
 
         rvalues = np.ones([height, width])
@@ -359,7 +423,6 @@ class Brush:
         MAX_ANGLE_DEVIATION = math.pi*25.0/180.0
         DIST_THRESHOLD = .5
 
-        self.timer_end()
         self.timer_start()
 
         def prune_points(contour):
@@ -459,6 +522,9 @@ class Brush:
         self.timer_start()
 
 
+
+
+
         def create_triangulation_arrays():
             line_array = np.empty([len(lines), 2])
             i = 0
@@ -490,9 +556,6 @@ class Brush:
 
 
 
-
-
-
         def add_points_to_composite():
             angles = np.empty([len(self.triangle_points), 2, 2])
             for l in lines:
@@ -519,7 +582,7 @@ class Brush:
                         regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,0])]
                                    #geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
 
-                t = geometry.TrianglePoint(p,regions)
+                t = geometry.TrianglePoint(p,regions, composite_point_index=len(self.composite_points))
                 self.composite_points.append(t)
                 index = index + 1
 
@@ -537,42 +600,123 @@ class Brush:
 
         grid_new = geometry.Grid(grid_x, grid_y, window, first_triangles, True)
 
-        redo_points = []
-        mapping = []
+        mapping = {}
         index = 0
-        for p in self.composite_points[0:starting_value]:
-            if grid_new.point_int_grid_cell(p.point):
-                redo_points.append(p)
-                mapping.append(index)
-                index += 1
-            else:
-                mapping.append(-1)
+
+
+
+        glClear(GL_COLOR_BUFFER_BIT)
+        grid_old.draw_grid()
+
+
+
+        graph = []
+        for i in range(len(self.composite_points)):
+            graph.append([])
+
+        for s in self.composite_lines:
+            graph[s[0]].append(s[1])
+            graph[s[1]].append(s[0])
+
+        old_triangles, redo_points, extra_segments = grid_new.get_unmodified_triangles(grid_old, graph)
+
+        print 'length of old_triangles', len(old_triangles)
+        for p in redo_points:
+            mapping[p.composite_point_index] = index
+            index += 1
+
+        print 'using:', len(redo_points), 'out of', len(self.composite_points)
 
         redo_segments = []
         for l in self.composite_lines:
-            index1 = mapping[l[0]]
-            index2 = mapping[l[1]]
-            if index1 != -1 and index2 != -1:
+            if l[0] in mapping and l[1] in mapping:
+                index1 = mapping[l[0]]
+                index2 = mapping[l[1]]
                 redo_segments.append([index1, index2])
 
+        redo_starting_value = len(redo_points)
+
+
+
+
+        """
+        glClear(GL_COLOR_BUFFER_BIT)
+
+        glColor3f(1, 0, 1)
+        glBegin(GL_LINES)
+        for r in self.composite_lines:
+            glVertex2f(self.composite_points[r[0]].point[0], self.composite_points[r[0]].point[1])
+            glVertex2f(self.composite_points[r[1]].point[0], self.composite_points[r[1]].point[1])
+        glEnd()
+
+        glPointSize(3)
+        glColor3f(0, 1, 1)
+        glBegin(GL_POINTS)
+        for r in self.composite_points:
+            glVertex2f(r.point[0], r.point[1])
+        glEnd()
+        glPointSize(1)
+
+        glutSwapBuffers()
+        #raw_input('press any key')
+        """
 
         def triangulation_two():
             for l in lines:
-                self.composite_lines.append([l[0]+starting_value,l[1]+starting_value])
+                seg1 = [l[0]+starting_value,l[1]+starting_value]
+                self.composite_lines.append(seg1)
+                seg2 = [l[0]+redo_starting_value,l[1]+redo_starting_value]
+                redo_segments.append(seg2)
 
-            verts = np.empty([len(self.composite_points), 2])
+            verts = np.empty([len(redo_points)+len(self.composite_points)-starting_value, 2])
             i = 0
-            for t in self.composite_points:
+            for t in redo_points:
                 verts[i, 0] = t.point[0]
                 verts[i, 1] = t.point[1]
 
                 i = i + 1
 
+            for t in self.composite_points[starting_value:]:
+                verts[i, 0] = t.point[0]
+                verts[i, 1] = t.point[1]
+
+                i = i + 1
+
+            #for es in extra_segments:
+            #    redo_segments.append([mapping[es[0]], mapping[es[1]]])
+
+            glClear(GL_COLOR_BUFFER_BIT)
+            grid_new.draw_grid()
 
 
-            line_array = np.empty([len(self.composite_lines), 2])
+            glColor3f(1, 0, 1)
+            glBegin(GL_LINES)
+            for r in redo_segments:
+                glVertex2f(verts[r[0]][0], verts[r[0]][1])
+                glVertex2f(verts[r[1]][0], verts[r[1]][1])
+            glEnd()
+
+            glPointSize(3)
+
+            glColor3f(1, 0, 0)
+            glBegin(GL_POINTS)
+            for r in self.composite_points:
+                glVertex2f(r.point[0], r.point[1])
+            glEnd()
+
+            glColor3f(0, 1, 1)
+            glBegin(GL_POINTS)
+            for r in redo_points:
+                glVertex2f(r.point[0], r.point[1])
+            glEnd()
+            glPointSize(1)
+
+            glutSwapBuffers()
+            #raw_input('press any key')
+
+            line_array = np.empty([len(redo_segments), 2])
             i = 0
-            for l in self.composite_lines:
+            for l in redo_segments:
                 line_array[i, 0] = l[0]
                 line_array[i, 1] = l[1]
                 i = i + 1
@@ -586,10 +730,39 @@ class Brush:
         segments = triangulation['segments']
 
 
+
+        def convert_redo_point_to_composite(index):
+            if index < redo_starting_value:
+                return redo_points[index].composite_point_index
+            else:
+                return index + starting_value - redo_starting_value
+
+        pts_length = len(redo_points)
+        for s in segments:
+            #if s[0] < pts_length or s[1] < pts_length:
+            index1 = s[0]
+            index2 = s[1]
+            self.composite_lines.append([convert_redo_point_to_composite(index1), convert_redo_point_to_composite(index2)])
+
+        new_tri_indicies = []
+        for indicies in tri_indicies:
+            new_indicies = []
+            for i in indicies:
+                new_indicies.append(convert_redo_point_to_composite(i))
+            new_tri_indicies.append(new_indicies)
+
+        tri_indicies = new_tri_indicies
+
+        self.delauny_points.extend(delauny_points[redo_starting_value:])
+        delauny_points = self.delauny_points
+
+        print 'delauny_length', len(delauny_points), 'composite', len(self.composite_points)
+
         graph = []
         marked = []
         all_points = []
         self.point_data = []
+
         for i in range(len(delauny_points)):
             graph.append([])
             self.point_data.append([])
@@ -602,7 +775,7 @@ class Brush:
 
 
 
-        for s in segments:
+        for s in self.composite_lines:
             graph[s[0]].append(s[1])
             graph[s[1]].append(s[0])
 
@@ -726,13 +899,13 @@ class Brush:
 
 
             if len(angles) == 1:
-                color_regions = [angles[1].color_regions]
+                color_regions = angles[0][1].color_regions
             else:
                 if not flag:
                     print 'FAILED When determining color range order'
                     print angles
 
-            all_points[index] = geometry.TrianglePoint(p1, color_regions)
+            all_points[index] = geometry.TrianglePoint(p1, color_regions, composite_point_index=index)
 
 
         for i in range(len(self.composite_points), len(all_points)):
@@ -774,12 +947,14 @@ class Brush:
         determine_final_colors()
 
         self.composite_points = all_points
-        self.composite_lines = []
-        for s in segments:
-            self.composite_lines.append(s)
+        #self.composite_lines = []
+        #for s in segments:
+        #    self.composite_lines.append(s)
 
 
+        hold = len(self.triangles)
         self.triangles = []
+        print 'out of:', hold, 'using', len(self.triangles)
 
         for indices in tri_indicies:
             t = []
@@ -787,26 +962,14 @@ class Brush:
                 t.append(all_points[i])
 
             self.triangles.append(geometry.Triangle(t))
+        self.triangles.extend(old_triangles)
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))
 
-        def setup_vbo():
-            np_vbo = np.empty((len(self.triangles)*3, 5), dtype=np.float32)
 
-            for index in range(len(self.triangles)):
-                points = self.triangles[index].points
-                colors = self.triangles[index].get_colors()
-                np_vbo[index*3, 0:2] = points[0].point
-                np_vbo[index*3, 2:5] = colors[0][0:3]
-                np_vbo[index*3+1, 0:2] = points[1].point
-                np_vbo[index*3+1, 2:5] = colors[1][0:3]
-                np_vbo[index*3+2, 0:2] = points[2].point
-                np_vbo[index*3+2, 2:5] = colors[2][0:3]
 
-            self.triangle_vertices_vbo = vbo.VBO(np_vbo)
-
-        setup_vbo()
+        self.setup_vbo()
 
 
         self.current_quads = []
@@ -819,6 +982,22 @@ class Brush:
         #glBindFramebuffer(GL_FRAMEBUFFER, 0)
         #glDeleteFramebuffers(1, fbo)
         self.timer_end()
+
+
+    def setup_vbo(self):
+        np_vbo = np.empty((len(self.triangles)*3, 5), dtype=np.float32)
+
+        for index in range(len(self.triangles)):
+            points = self.triangles[index].points
+            colors = self.triangles[index].get_colors()
+            np_vbo[index*3, 0:2] = points[0].point
+            np_vbo[index*3, 2:5] = colors[0][0:3]
+            np_vbo[index*3+1, 0:2] = points[1].point
+            np_vbo[index*3+1, 2:5] = colors[1][0:3]
+            np_vbo[index*3+2, 0:2] = points[2].point
+            np_vbo[index*3+2, 2:5] = colors[2][0:3]
+
+        self.triangle_vertices_vbo = vbo.VBO(np_vbo)
 
     def simplify(self):
         def get_lab_color(c):

@@ -1,6 +1,7 @@
 __author__ = 'mdbenjam'
 
 from OpenGL.GL import *
+from OpenGL.GLUT import *
 import math
 import numpy as np
 
@@ -22,10 +23,10 @@ class Triangle:
 
 
     def draw(self):
-        for p in self.points:
+        color = self.get_colors()
+        for p, c in zip(self.points, color):
             #print 'c'+str(color)
-            color = self.get_colors()
-            glColor3f(color[0], color[1], color[2])
+            glColor3f(c[0], c[1], c[2])
             glVertex2f(p.point[0], p.point[1])
 
     def draw_color(self, color):
@@ -78,6 +79,12 @@ class Triangle:
 
 class Grid:
 
+    def convert_from_center(self, x, y):
+        return (x - self.window.center_x + self.window.zoom_width/2, y - self.window.center_y + self.window.zoom_height/2)
+
+    def convert_to_center(self, x, y):
+        return (x + self.window.center_x - self.window.zoom_width/2, y + self.window.center_y - self.window.zoom_height/2)
+
     def __init__(self, cols, rows, window, triangles, is_triangle = False):
         self.cols = cols
         self.rows = rows
@@ -102,10 +109,8 @@ class Grid:
 
             xs = [p[0][0], p[1][0], p[2][0]]
             ys = [p[0][1], p[1][1], p[2][1]]
-            min_x = np.min(xs) - window.center_x
-            min_y = np.min(ys) - window.center_y
-            max_x = np.max(xs) - window.center_x
-            max_y = np.max(ys) - window.center_y
+            min_x, min_y = self.convert_from_center(min(xs), min(ys))
+            max_x, max_y = self.convert_from_center(max(xs), max(ys))
 
             x1 = int(min_x / self.x_width)
             x2 = int(max_x / self.x_width)
@@ -117,9 +122,16 @@ class Grid:
                 for y in range(y1, y2+1):
                     self.grid[x][y].append(i)
 
+    def point_in_occupied_grid(self, p):
+        x, y = self.convert_from_center(p[0], p[1])
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
+        return len(self.grid[x][y]) != 0
+
     def point_in_triangle_acc(self, p):
-        x = int((p[0] - self.window.center_x)/self.x_width)
-        y = int((p[1] - self.window.center_y)/self.y_height)
+        x, y = self.convert_from_center(p[0], p[1])
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
         for i in self.grid[x][y]:
             if self.is_triangle:
                 pts = self.triangles[i].points
@@ -131,19 +143,82 @@ class Grid:
 
         return None
 
-    def point_int_grid_cell(self, p):
-        x = int((p[0] - self.window.center_x)/self.x_width)
-        y = int((p[1] - self.window.center_y)/self.y_height)
-        return len(self.grid[x][y]) == 0
+    def get_number_triangles_part_of(self, p):
+        x, y = self.convert_from_center(p.point[0], p.point[1])
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
+        count = 0
+        for k in self.grid[x][y]:
+            if p in self.triangles[k].points:
+                count += 1
+        return count
 
-    def get_unmodified_triangles(self, other):
-        triangles = []
+
+    def get_unmodified_triangles(self, other, segment_graph):
+        triangles = set(other.triangles)
+        points = set()
+        added_segs = []
         for i in range(self.cols):
             for j in range(self.rows):
-                if len(self.grid[i][j]) == 0:
+                if len(self.grid[i][j]) != 0:
                     for k in other.grid[i][j]:
-                        triangles.append(other.triangles[k])
-        return triangles
+                        tri = other.triangles[k]
+                        if tri in triangles:
+                            triangles.remove(tri)
+
+                        for p in tri.points:
+                            #if self.point_in_occupied_grid(p.point):
+                            points.add(p)
+
+        """
+        new_triangles = set()
+        for tri in triangles:
+            remove = False
+            for i, p in enumerate(tri.points):
+                p1 = tri.points[(i+1)%3]
+                p2 = tri.points[(i+2)%3]
+                count = 0
+                for index in segment_graph[p.composite_point_index]:
+                    if (index == p1.composite_point_index or index == p2.composite_point_index) and p1 in points and p2 in points:
+                        count += 1
+                if count == 2:
+                    for p3 in tri.points:
+                        points.add(p3)
+                    remove = True
+                    break
+            if not remove:
+                new_triangles.add(tri)
+        triangles = new_triangles
+        """
+        for t in other.triangles:
+            for i, p in enumerate(t.points):
+                p1 = t.points[(i+1)%3]
+                p2 = t.points[(i+2)%3]
+                bool1 = p1 in points
+                bool2 = p2 in points
+                bool3 = p in points
+                if not bool3 and bool1 and bool2:
+                    added_segs.append([p1.composite_point_index, p2.composite_point_index])
+
+        return list(triangles), list(points), added_segs
+
+    def draw_grid(self):
+        glColor3f(0.5, 1, 0.5)
+        for i in range(self.cols):
+            for j in range(self.rows):
+                x1, y1 = self.convert_to_center(i * self.x_width, j * self.y_height)
+                x2, y2 = self.convert_to_center((i+1) * self.x_width, (j+1) * self.y_height)
+                if len(self.grid[i][j]) == 0:
+                    glBegin(GL_LINE_LOOP)
+                else:
+                    glBegin(GL_QUADS)
+                glVertex2f(x1, y1)
+                glVertex2f(x2, y1)
+                glVertex2f(x2, y2)
+                glVertex2f(x1, y2)
+                glEnd()
+
+
 
 class ColorRegion:
     def __init__(self, color, start_angle, end_angle):
@@ -215,10 +290,11 @@ def color_over(color_bottom, color_top):
     return composite_color
 
 class TrianglePoint:
-    def __init__(self, point=None, color_regions=None, file=None):
+    def __init__(self, point=None, color_regions=None, composite_point_index = None, file=None):
         if file == None:
             self.point = point
             self.color_regions = color_regions
+            self.composite_point_index = composite_point_index
         else:
             self.load(file)
 
