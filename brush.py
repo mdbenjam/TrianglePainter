@@ -618,7 +618,7 @@ class Brush:
         old_triangles, redo_points, added_points, added_segments, remove_seg_graph = grid_new.get_unmodified_triangles(grid_old)
         pre_intersection_length = len(self.composite_points)
         self.composite_points.extend(added_points)
-        #self.composite_lines.extend(added_segments)
+        self.composite_lines.extend(added_segments)
         redo_points.extend(added_points)
         redo_points.extend(self.composite_points[starting_value:])
 
@@ -633,7 +633,7 @@ class Brush:
         tmp_removed_length = len(new_lines)
 
         self.composite_lines = new_lines
-        self.composite_lines.extend(added_segments)
+        #self.composite_lines.extend(added_segments)
 
         print 'length of old_triangles', len(old_triangles)
         for p in redo_points:
@@ -769,27 +769,6 @@ class Brush:
         segments = triangulation['segments']
 
 
-        glClear(GL_COLOR_BUFFER_BIT)
-
-        glColor3f(1, 0, 1)
-        for t in tri_indicies:
-            glBegin(GL_LINE_LOOP)
-            for i in t:
-                glVertex2f(delauny_points[i][0], delauny_points[i][1])
-            glEnd()
-
-        glColor3f(0, 1, 1)
-        for t in old_triangles:
-            glBegin(GL_LINE_LOOP)
-            for p in t.points:
-                glVertex2f(p.point[0], p.point[1])
-            glEnd()
-
-
-        glutSwapBuffers()
-        raw_input('press any key')
-
-
         def convert_redo_point_to_composite(index):
             if index < redo_starting_value:
                 return redo_points[index].composite_point_index
@@ -859,7 +838,7 @@ class Brush:
                 angle = angle/norm
                 i = s
                 last_i = i
-                while i >= len(self.composite_points):
+                while i >= pre_intersection_length:
                     angle2 = []
                     for b in graph[i]:
                         p2 = delauny_points[b]
@@ -995,26 +974,8 @@ class Brush:
                                                self.composite_points[t.points[2].composite_point_index]])
                     for p2 in new_t.points:
                         print 'point indices', p2.composite_point_index
-                    try:
-                        pixel_color = new_t.get_color_at_point(p.point)
-                    except:
-                        glClear(GL_COLOR_BUFFER_BIT)
+                    pixel_color = new_t.get_color_at_point(p.point)
 
-                        glPointSize(3)
-
-                        glColor3f(1, 0, 0)
-                        glBegin(GL_POINTS)
-                        for r in self.composite_points:
-                            glVertex2f(r.point[0], r.point[1])
-                        glColor3f(0, 1, 1)
-                        for p in new_t.points:
-                            glVertex2f(p.point[0], p.point[1])
-                        glEnd()
-                        glutSwapBuffers()
-                        for p in new_t.points:
-                            for r in p.color_regions:
-                                print r.start_angle, r.end_angle, r.color
-                        raw_input('press any key')
 
 
                 pixel_colors.append(pixel_color)

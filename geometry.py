@@ -81,10 +81,10 @@ class Triangle:
 class Grid:
 
     def convert_from_center(self, x, y):
-        return (x - self.window.center_x + self.window.zoom_width/2, y - self.window.center_y + self.window.zoom_height/2)
+        return (x + self.window.center_x + self.window.zoom_width/2, y + self.window.center_y + self.window.zoom_height/2)
 
     def convert_to_center(self, x, y):
-        return (x + self.window.center_x - self.window.zoom_width/2, y + self.window.center_y - self.window.zoom_height/2)
+        return (x - self.window.center_x - self.window.zoom_width/2, y - self.window.center_y - self.window.zoom_height/2)
 
     def __init__(self, cols, rows, window, triangles, points, segments, is_triangle = False):
         self.cols = cols
@@ -131,6 +131,7 @@ class Grid:
 
             y1 = int(min_y / self.y_height)
             y2 = int(max_y / self.y_height)
+
 
             for x in range(x1, x2+1):
                 for y in range(y1, y2+1):
