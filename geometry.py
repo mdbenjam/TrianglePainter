@@ -81,10 +81,14 @@ class Triangle:
 class Grid:
 
     def convert_from_center(self, x, y):
-        return (x + self.window.center_x + self.window.zoom_width/2, y + self.window.center_y + self.window.zoom_height/2)
+        #x2, y2 = (((float(x) - self.window.center_x)/self.window.zoom_width + .5)*self.cols, ((float(y) - self.window.center_y)/self.window.zoom_height + .5)*self.rows)
+        #return (int(x2), int(y2))
+        return (int((x + self.window.center_x + self.window.zoom_width/2)/self.x_width), int((y + self.window.center_y + self.window.zoom_height/2)/self.y_height))
 
     def convert_to_center(self, x, y):
-        return (x - self.window.center_x - self.window.zoom_width/2, y - self.window.center_y - self.window.zoom_height/2)
+        #x2, y2 = ((float(x)/self.cols - .5) * self.window.zoom_width + self.window.center_x, (float(y)/self.rows - .5) * self.window.zoom_height + self.window.center_y)
+        #return (x2, y2)
+        return (x * self.x_width - self.window.center_x - self.window.zoom_width/2, y * self.y_height - self.window.center_y - self.window.zoom_height/2)
 
     def __init__(self, cols, rows, window, triangles, points, segments, is_triangle = False):
         self.cols = cols
@@ -126,15 +130,13 @@ class Grid:
             min_x, min_y = self.convert_from_center(min(xs), min(ys))
             max_x, max_y = self.convert_from_center(max(xs), max(ys))
 
-            x1 = int(min_x / self.x_width)
-            x2 = int(max_x / self.x_width)
+            #print 'x,ys', min_x, max_x, min_y, max_y
 
-            y1 = int(min_y / self.y_height)
-            y2 = int(max_y / self.y_height)
+            #for x in range(max(0, min_x), min(max_x+1, self.cols)):
+            #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
 
-
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
+            for x in range(min_x, max_x+1):
+                for y in range(min_y, max_y+1):
                     self.grid[x][y].append(i)
 
         for i, s in enumerate(segments):
@@ -145,26 +147,28 @@ class Grid:
             min_x, min_y = self.convert_from_center(min(xs), min(ys))
             max_x, max_y = self.convert_from_center(max(xs), max(ys))
 
-            x1 = int(min_x / self.x_width)
-            x2 = int(max_x / self.x_width)
+            #print 'x,ys', min_x, max_x, min_y, max_y
+            #print 'x,ys2', max(0, min_x), min(max_x+1, self.cols), max(0, min_y), min(max_y+1, self.rows)
+            #for x in range(max(0, min_x), min(max_x+1, self.cols)):
+            #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
 
-            y1 = int(min_y / self.y_height)
-            y2 = int(max_y / self.y_height)
-
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
+            for x in range(min_x, max_x+1):
+                for y in range(min_y, max_y+1):
                     self.seg_grid[x][y].append(i)
 
     def point_in_occupied_grid(self, p):
         x, y = self.convert_from_center(p[0], p[1])
-        x = int(x/self.x_width)
-        y = int(y/self.y_height)
         return len(self.grid[x][y]) != 0
+
+        #if 0 <= x < self.cols and 0 <= y < self.rows:
+        #    return len(self.grid[x][y]) != 0
+        #else:
+        #    return False
 
     def point_in_triangle_acc(self, p):
         x, y = self.convert_from_center(p[0], p[1])
-        x = int(x/self.x_width)
-        y = int(y/self.y_height)
+        #if not (0 <= x < self.cols and 0 <= y < self.rows):
+        #    return None
         for i in self.grid[x][y]:
             if self.is_triangle:
                 pts = self.triangles[i].points
@@ -178,8 +182,8 @@ class Grid:
 
     def get_number_triangles_part_of(self, p):
         x, y = self.convert_from_center(p.point[0], p.point[1])
-        x = int(x/self.x_width)
-        y = int(y/self.y_height)
+        #if not (0 <= x < self.cols and 0 <= y < self.rows):
+        #    return 0
         count = 0
         for k in self.grid[x][y]:
             if p in self.triangles[k].points:
@@ -224,23 +228,20 @@ class Grid:
                 if p.composite_point_index >= p2.composite_point_index:
                     continue
                 x, y = self.convert_from_center(p.point[0], p.point[1])
-                x = int(x/self.x_width)
-                y = int(y/self.y_height)
-
                 x2, y2 = self.convert_from_center(p2.point[0], p2.point[1])
-                x2 = int(x2/self.x_width)
-                y2 = int(y2/self.y_height)
 
-                xmin = min(x, x2)
-                xmax = max(x, x2)
+                min_x = min(x, x2)
+                max_x = max(x, x2)
 
-                ymin = min(y, y2)
-                ymax = max(y, y2)
+                min_y = min(y, y2)
+                max_y = max(y, y2)
 
-                for x in range(xmin, xmax+1):
-                    for y in range(ymin, ymax+1):
+                #for x in range(max(0, min_x), min(max_x+1, self.cols)):
+                #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
+                for x in range(min_x, max_x+1):
+                    for y in range(min_y, max_y+1):
                         for k in other.seg_grid[x][y]:
-                            print 'k', k
+                            #print 'k', k
                             seg = other.segments[k]
                             if (p == other.points[seg[0]] or p2 == other.points[seg[0]] or
                                 p == other.points[seg[1]] or p2 == other.points[seg[1]]):
@@ -321,8 +322,8 @@ class Grid:
         glColor3f(0.5, 1, 0.5)
         for i in range(self.cols):
             for j in range(self.rows):
-                x1, y1 = self.convert_to_center(i * self.x_width, j * self.y_height)
-                x2, y2 = self.convert_to_center((i+1) * self.x_width, (j+1) * self.y_height)
+                x1, y1 = self.convert_to_center(i, j)
+                x2, y2 = self.convert_to_center((i+1), (j+1))
                 if len(self.grid[i][j]) == 0:
                     glBegin(GL_LINE_LOOP)
                 else:
