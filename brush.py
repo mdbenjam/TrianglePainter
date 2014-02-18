@@ -586,14 +586,10 @@ class Brush:
                 self.composite_points.append(t)
                 index = index + 1
 
-            for l in lines:
-                seg1 = [l[0]+starting_value,l[1]+starting_value]
-                self.composite_lines.append(seg1)
-
         add_points_to_composite()
 
 
-        grid_old = geometry.Grid(grid_x, grid_y, window, self.triangles, self.composite_points, self.composite_lines, True)
+        grid_old = geometry.Grid(grid_x, grid_y, window, self.triangles, True)
         first_triangles = []
         for i in first_triangle_indicies:
             t = first_triangulation['vertices'][i]
@@ -602,34 +598,27 @@ class Brush:
                 t2.append(self.composite_points[starting_value+i[j]])
             first_triangles.append(geometry.Triangle(t2))
 
-        grid_new = geometry.Grid(grid_x, grid_y, window, first_triangles, self.composite_points, self.composite_lines, True)
+        grid_new = geometry.Grid(grid_x, grid_y, window, first_triangles, True)
 
         mapping = {}
         index = 0
 
 
 
+        glClear(GL_COLOR_BUFFER_BIT)
+        grid_old.draw_grid()
 
 
-        old_triangles, redo_points, added_points, added_segments, remove_seg_graph = grid_new.get_unmodified_triangles(grid_old)
-        pre_intersection_length = len(self.composite_points)
-        self.composite_points.extend(added_points)
-        self.composite_lines.extend(added_segments)
-        redo_points.extend(added_points)
-        redo_points.extend(self.composite_points[starting_value:])
 
-        new_lines = []
+        graph = []
+        for i in range(len(self.composite_points)):
+            graph.append([])
 
-        print 'remove segs', remove_seg_graph
+        for s in self.composite_lines:
+            graph[s[0]].append(s[1])
+            graph[s[1]].append(s[0])
 
-        for l in self.composite_lines:
-            if not (l[0] < len(remove_seg_graph) and l[1] in remove_seg_graph[l[0]]):
-                new_lines.append(l)
-
-        tmp_removed_length = len(new_lines)
-
-        self.composite_lines = new_lines
-        #self.composite_lines.extend(added_segments)
+        old_triangles, redo_points, extra_segments = grid_new.get_unmodified_triangles(grid_old, graph)
 
         print 'length of old_triangles', len(old_triangles)
         for p in redo_points:
@@ -646,6 +635,7 @@ class Brush:
                 redo_segments.append([index1, index2])
 
         redo_starting_value = len(redo_points)
+
 
 
 
@@ -672,18 +662,13 @@ class Brush:
         """
 
         def triangulation_two():
-            for p in redo_points:
-                print p.point
+            for l in lines:
+                seg1 = [l[0]+starting_value,l[1]+starting_value]
+                self.composite_lines.append(seg1)
+                seg2 = [l[0]+redo_starting_value,l[1]+redo_starting_value]
+                redo_segments.append(seg2)
 
-            print len(redo_points)
-
-            print redo_segments
-
-            #for l in lines:
-            #    seg2 = [l[0]+redo_starting_value,l[1]+redo_starting_value]
-            #    redo_segments.append(seg2)
-
-            verts = np.empty([len(redo_points),2])#+len(self.composite_points)-starting_value, 2])
+            verts = np.empty([len(redo_points)+len(self.composite_points)-starting_value, 2])
             i = 0
             for t in redo_points:
                 verts[i, 0] = t.point[0]
@@ -691,14 +676,43 @@ class Brush:
 
                 i = i + 1
 
-            #for t in self.composite_points[starting_value:]:
-            #    verts[i, 0] = t.point[0]
-            #    verts[i, 1] = t.point[1]
+            for t in self.composite_points[starting_value:]:
+                verts[i, 0] = t.point[0]
+                verts[i, 1] = t.point[1]
 
-            #    i = i + 1
+                i = i + 1
 
             #for es in extra_segments:
             #    redo_segments.append([mapping[es[0]], mapping[es[1]]])
+
+            glClear(GL_COLOR_BUFFER_BIT)
+            grid_new.draw_grid()
+
+
+            glColor3f(1, 0, 1)
+            glBegin(GL_LINES)
+            for r in redo_segments:
+                glVertex2f(verts[r[0]][0], verts[r[0]][1])
+                glVertex2f(verts[r[1]][0], verts[r[1]][1])
+            glEnd()
+
+            glPointSize(3)
+
+            glColor3f(1, 0, 0)
+            glBegin(GL_POINTS)
+            for r in self.composite_points:
+                glVertex2f(r.point[0], r.point[1])
+            glEnd()
+
+            glColor3f(0, 1, 1)
+            glBegin(GL_POINTS)
+            for r in redo_points:
+                glVertex2f(r.point[0], r.point[1])
+            glEnd()
+            glPointSize(1)
+
+            glutSwapBuffers()
+            #raw_input('press any key')
 
             line_array = np.empty([len(redo_segments), 2])
             i = 0
@@ -707,15 +721,14 @@ class Brush:
                 line_array[i, 1] = l[1]
                 i = i + 1
 
-            print 'pre triangle'
             A = dict(vertices = verts, segments = line_array)
             return triangle.triangulate(A, 'p')
 
         triangulation = triangulation_two()
-        print 'post triangle'
         tri_indicies = triangulation['triangles']
         delauny_points = triangulation['vertices']
         segments = triangulation['segments']
+
 
 
         def convert_redo_point_to_composite(index):
@@ -725,13 +738,11 @@ class Brush:
                 return index + starting_value - redo_starting_value
 
         pts_length = len(redo_points)
-        """
         for s in segments:
             #if s[0] < pts_length or s[1] < pts_length:
             index1 = s[0]
             index2 = s[1]
             self.composite_lines.append([convert_redo_point_to_composite(index1), convert_redo_point_to_composite(index2)])
-        """
 
         new_tri_indicies = []
         for indicies in tri_indicies:
@@ -749,25 +760,26 @@ class Brush:
 
         graph = []
         marked = []
+        all_points = []
         self.point_data = []
 
-        delauny_points = []
-        for p in self.composite_points:
-            delauny_points.append(p.point)
-
-        for i in range(len(self.composite_points)):
+        for i in range(len(delauny_points)):
             graph.append([])
             self.point_data.append([])
-            if i < pre_intersection_length:
+            if i < len(self.composite_points):
+                all_points.append(self.composite_points[i])
                 marked.append(True)
             else:
+                all_points.append(None)
                 marked.append(False)
 
-        print 'composite_lines', self.composite_lines
+
 
         for s in self.composite_lines:
             graph[s[0]].append(s[1])
             graph[s[1]].append(s[0])
+
+
 
         def color_index(index):
             if marked[index]:
@@ -777,8 +789,6 @@ class Brush:
             color_regions = []
             angles = []
             p1 = delauny_points[index]
-            print 'graph_length', len(graph[index])
-            print 'graph', graph[index]
             for s in graph[index]:
 
                 p2 = delauny_points[s]
@@ -790,7 +800,7 @@ class Brush:
                 angle = angle/norm
                 i = s
                 last_i = i
-                while i >= pre_intersection_length:
+                while i >= len(self.composite_points):
                     angle2 = []
                     for b in graph[i]:
                         p2 = delauny_points[b]
@@ -815,7 +825,7 @@ class Brush:
 
                 p2 = delauny_points[i]
 
-                angles.append((angle, self.composite_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
+                angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
 
                 def gen_color_range(angle1, angle2, p, index):
                     """
@@ -875,7 +885,7 @@ class Brush:
 
                     else:
                         self.point_data[index].append(False)
-                        return range1
+                        return [range1]
 
             flag = False
             for i in range(1,len(angles)):
@@ -895,17 +905,11 @@ class Brush:
                     print 'FAILED When determining color range order'
                     print angles
 
-            self.composite_points[index] = geometry.TrianglePoint(p1, color_regions, composite_point_index=index)
+            all_points[index] = geometry.TrianglePoint(p1, color_regions, composite_point_index=index)
 
 
-        for i in range(pre_intersection_length, len(self.composite_points)):
-            print 'coloring', i
+        for i in range(len(self.composite_points), len(all_points)):
             color_index(i)
-            print self.composite_points[i].color_regions
-            for r in self.composite_points[i].color_regions:
-                print r
-                print r.start_angle, r.end_angle, r.color
-            print '-----'
 
         pixel_colors = []
 
@@ -916,20 +920,13 @@ class Brush:
 
         def determine_final_colors():
 
+
             for p in self.composite_points[starting_value:]:
                 pixel_color = [1, 1, 1, 0]
                 t = grid_old.point_in_triangle_acc(p.point)
 
                 if not t is None:
-                    new_t = geometry.Triangle([self.composite_points[t.points[0].composite_point_index],
-                                               self.composite_points[t.points[1].composite_point_index],
-                                               self.composite_points[t.points[2].composite_point_index]])
-                    #for p2 in new_t.points:
-                    #    print 'point indices', p2.composite_point_index
-                    pixel_color = new_t.get_color_at_point(p.point)
-
-
-
+                    pixel_color = t.get_color_at_point(p.point)
                 pixel_colors.append(pixel_color)
 
 
@@ -947,9 +944,9 @@ class Brush:
                     r.color = geometry.color_over(p_c, r.color)
                     index = index + 1
 
-        #self.composite_points = all_points
         determine_final_colors()
 
+        self.composite_points = all_points
         #self.composite_lines = []
         #for s in segments:
         #    self.composite_lines.append(s)
@@ -962,11 +959,10 @@ class Brush:
         for indices in tri_indicies:
             t = []
             for i in indices:
-                t.append(self.composite_points[i])
+                t.append(all_points[i])
 
             self.triangles.append(geometry.Triangle(t))
-        old_triangles.extend(self.triangles)
-        self.triangles = old_triangles
+        self.triangles.extend(old_triangles)
 
         print "tri: " + str(len(self.triangles))
         print "quad: " + str(len(self.current_quads))

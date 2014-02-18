@@ -4,7 +4,6 @@ from OpenGL.GL import *
 from OpenGL.GLUT import *
 import math
 import numpy as np
-import copy
 
 class Triangle:
     def __init__(self, points=None,file=None):
@@ -81,16 +80,12 @@ class Triangle:
 class Grid:
 
     def convert_from_center(self, x, y):
-        #x2, y2 = (((float(x) - self.window.center_x)/self.window.zoom_width + .5)*self.cols, ((float(y) - self.window.center_y)/self.window.zoom_height + .5)*self.rows)
-        #return (int(x2), int(y2))
-        return (int((x + self.window.center_x + self.window.zoom_width/2)/self.x_width), int((y + self.window.center_y + self.window.zoom_height/2)/self.y_height))
+        return (x - self.window.center_x + self.window.zoom_width/2, y - self.window.center_y + self.window.zoom_height/2)
 
     def convert_to_center(self, x, y):
-        #x2, y2 = ((float(x)/self.cols - .5) * self.window.zoom_width + self.window.center_x, (float(y)/self.rows - .5) * self.window.zoom_height + self.window.center_y)
-        #return (x2, y2)
-        return (x * self.x_width - self.window.center_x - self.window.zoom_width/2, y * self.y_height - self.window.center_y - self.window.zoom_height/2)
+        return (x + self.window.center_x - self.window.zoom_width/2, y + self.window.center_y - self.window.zoom_height/2)
 
-    def __init__(self, cols, rows, window, triangles, points, segments, is_triangle = False):
+    def __init__(self, cols, rows, window, triangles, is_triangle = False):
         self.cols = cols
         self.rows = rows
         self.window = window
@@ -98,25 +93,12 @@ class Grid:
         self.y_height = window.zoom_height / float(rows)
         self.triangles = triangles
         self.is_triangle = is_triangle
-        self.points = points
-        self.segments = segments
-        self.graph = []
-
-        for i in range(len(points)):
-            self.graph.append([])
-
-        for s in segments:
-            self.graph[s[0]].append(s[1])
-            self.graph[s[1]].append(s[0])
 
         self.grid = []
-        self.seg_grid = []
         for c in range(cols):
             self.grid.append([])
-            self.seg_grid.append([])
             for r in range(rows):
                 self.grid[c].append([])
-                self.seg_grid[c].append([])
 
         for i, t in enumerate(triangles):
             if is_triangle:
@@ -130,45 +112,26 @@ class Grid:
             min_x, min_y = self.convert_from_center(min(xs), min(ys))
             max_x, max_y = self.convert_from_center(max(xs), max(ys))
 
-            #print 'x,ys', min_x, max_x, min_y, max_y
+            x1 = int(min_x / self.x_width)
+            x2 = int(max_x / self.x_width)
 
-            #for x in range(max(0, min_x), min(max_x+1, self.cols)):
-            #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
+            y1 = int(min_y / self.y_height)
+            y2 = int(max_y / self.y_height)
 
-            for x in range(min_x, max_x+1):
-                for y in range(min_y, max_y+1):
+            for x in range(x1, x2+1):
+                for y in range(y1, y2+1):
                     self.grid[x][y].append(i)
-
-        for i, s in enumerate(segments):
-            p = [points[s[0]].point, points[s[1]].point]
-
-            xs = [p[0][0], p[1][0]]
-            ys = [p[0][1], p[1][1]]
-            min_x, min_y = self.convert_from_center(min(xs), min(ys))
-            max_x, max_y = self.convert_from_center(max(xs), max(ys))
-
-            #print 'x,ys', min_x, max_x, min_y, max_y
-            #print 'x,ys2', max(0, min_x), min(max_x+1, self.cols), max(0, min_y), min(max_y+1, self.rows)
-            #for x in range(max(0, min_x), min(max_x+1, self.cols)):
-            #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
-
-            for x in range(min_x, max_x+1):
-                for y in range(min_y, max_y+1):
-                    self.seg_grid[x][y].append(i)
 
     def point_in_occupied_grid(self, p):
         x, y = self.convert_from_center(p[0], p[1])
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
         return len(self.grid[x][y]) != 0
-
-        #if 0 <= x < self.cols and 0 <= y < self.rows:
-        #    return len(self.grid[x][y]) != 0
-        #else:
-        #    return False
 
     def point_in_triangle_acc(self, p):
         x, y = self.convert_from_center(p[0], p[1])
-        #if not (0 <= x < self.cols and 0 <= y < self.rows):
-        #    return None
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
         for i in self.grid[x][y]:
             if self.is_triangle:
                 pts = self.triangles[i].points
@@ -182,8 +145,8 @@ class Grid:
 
     def get_number_triangles_part_of(self, p):
         x, y = self.convert_from_center(p.point[0], p.point[1])
-        #if not (0 <= x < self.cols and 0 <= y < self.rows):
-        #    return 0
+        x = int(x/self.x_width)
+        y = int(y/self.y_height)
         count = 0
         for k in self.grid[x][y]:
             if p in self.triangles[k].points:
@@ -191,7 +154,7 @@ class Grid:
         return count
 
 
-    def get_unmodified_triangles(self, other):
+    def get_unmodified_triangles(self, other, segment_graph):
         triangles = set(other.triangles)
         points = set()
         added_segs = []
@@ -200,81 +163,12 @@ class Grid:
                 if len(self.grid[i][j]) != 0:
                     for k in other.grid[i][j]:
                         tri = other.triangles[k]
-
-                        added_a_point = 0
-                        for p in tri.points:
-                            #if self.point_in_occupied_grid(p.point):
-                            if self.point_in_triangle_acc(p.point):
-                                added_a_point += 1
-                                points.add(p)
-
-                        if added_a_point == 3 and tri in triangles:
+                        if tri in triangles:
                             triangles.remove(tri)
 
-        added_points = []
-        added_segments = []
-        replace_points_graph = []
-        remove_seg_graph = []
-        for i in range(len(self.points)):
-            remove_seg_graph.append([])
-            replace_points_graph.append(None)
-
-        index = len(self.points)
-        added_index = 0
-        already_intersected = set()
-        for p in self.points:
-            for i2 in self.graph[p.composite_point_index]:
-                p2 = self.points[i2]
-                if p.composite_point_index >= p2.composite_point_index:
-                    continue
-                x, y = self.convert_from_center(p.point[0], p.point[1])
-                x2, y2 = self.convert_from_center(p2.point[0], p2.point[1])
-
-                min_x = min(x, x2)
-                max_x = max(x, x2)
-
-                min_y = min(y, y2)
-                max_y = max(y, y2)
-
-                #for x in range(max(0, min_x), min(max_x+1, self.cols)):
-                #    for y in range(max(0, min_y), min(max_y+1, self.rows)):
-                for x in range(min_x, max_x+1):
-                    for y in range(min_y, max_y+1):
-                        for k in other.seg_grid[x][y]:
-                            #print 'k', k
-                            seg = other.segments[k]
-                            if (p == other.points[seg[0]] or p2 == other.points[seg[0]] or
-                                p == other.points[seg[1]] or p2 == other.points[seg[1]]):
-                                continue
-
-                            other_nums = [p.composite_point_index, p2.composite_point_index, other.points[seg[0]].composite_point_index, other.points[seg[1]].composite_point_index]
-                            other_nums = sorted(other_nums)
-                            point_numbers = (other_nums[0], other_nums[1], other_nums[2], other_nums[3])
-
-                            if point_numbers in already_intersected:
-                                continue
-
-                            intersection = lineIntersection(p.point, p2.point, other.points[seg[0]].point, other.points[seg[1]].point)
-                            if not intersection is None:
-                                added_points.append(TrianglePoint([intersection[0], intersection[1]], composite_point_index = index))
-                                added_segments.append([index, p.composite_point_index])
-                                added_segments.append([index, p2.composite_point_index])
-                                added_segments.append([index, other.points[seg[0]].composite_point_index])
-                                added_segments.append([index, other.points[seg[1]].composite_point_index])
-                                remove_seg_graph[p.composite_point_index].append(p2.composite_point_index)
-                                remove_seg_graph[p2.composite_point_index].append(p.composite_point_index)
-                                remove_seg_graph[other.points[seg[0]].composite_point_index].append(other.points[seg[1]].composite_point_index)
-                                remove_seg_graph[other.points[seg[1]].composite_point_index].append(other.points[seg[0]].composite_point_index)
-                                replace_points_graph[p.composite_point_index] = added_index
-
-                                index += 1
-                                added_index += 1
-
-
-                                already_intersected.add(point_numbers)
-
-
-
+                        for p in tri.points:
+                            #if self.point_in_occupied_grid(p.point):
+                            points.add(p)
 
         """
         new_triangles = set()
@@ -295,6 +189,7 @@ class Grid:
             if not remove:
                 new_triangles.add(tri)
         triangles = new_triangles
+        """
         for t in other.triangles:
             for i, p in enumerate(t.points):
                 p1 = t.points[(i+1)%3]
@@ -304,26 +199,15 @@ class Grid:
                 bool3 = p in points
                 if not bool3 and bool1 and bool2:
                     added_segs.append([p1.composite_point_index, p2.composite_point_index])
-        """
-        """
-        for t in other.triangles:
-            for i, p in enumerate(t.points):
-                replace = replace_points_graph[p.composite_point_index]
-                if not replace is None:
-                    t.points[i] = added_points[replace]
-        """
-        triangle_list = sorted(list(triangles), key=lambda tri: max(tri.points[0].composite_point_index, tri.points[1].composite_point_index, tri.points[2].composite_point_index))
 
-
-
-        return triangle_list, list(points), added_points, added_segments, remove_seg_graph
+        return list(triangles), list(points), added_segs
 
     def draw_grid(self):
         glColor3f(0.5, 1, 0.5)
         for i in range(self.cols):
             for j in range(self.rows):
-                x1, y1 = self.convert_to_center(i, j)
-                x2, y2 = self.convert_to_center((i+1), (j+1))
+                x1, y1 = self.convert_to_center(i * self.x_width, j * self.y_height)
+                x2, y2 = self.convert_to_center((i+1) * self.x_width, (j+1) * self.y_height)
                 if len(self.grid[i][j]) == 0:
                     glBegin(GL_LINE_LOOP)
                 else:
@@ -488,7 +372,7 @@ def pointInQuad(p, quad):
             return False
     return True
 
-def lineIntersection(p1, p2, p3, p4):
+def lineIntersection(self, p1, p2, p3, p4):
     if max(p1[0], p2[0]) < min(p3[0], p4[0]):
         return None
 
