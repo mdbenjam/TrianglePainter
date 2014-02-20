@@ -48,7 +48,6 @@ class Brush:
 
         self.window = window
 
-        """
         range = [geometry.ColorRegion((1, 1, 1, 1), [1, 0], [1, 0])]
 
         self.composite_points.append(geometry.TrianglePoint([window.center_x-window.zoom_width/2, window.center_y-window.zoom_height/2], range, 0))
@@ -56,10 +55,10 @@ class Brush:
         self.composite_points.append(geometry.TrianglePoint([window.center_x+window.zoom_width/2-1, window.center_y+window.zoom_height/2-1], range, 2))
         self.composite_points.append(geometry.TrianglePoint([window.center_x-window.zoom_width/2, window.center_y+window.zoom_height/2-1], range, 3))
 
-        self.composite_lines.append([0, 1])
-        self.composite_lines.append([1, 2])
-        self.composite_lines.append([2, 3])
-        self.composite_lines.append([3, 0])
+        self.composite_lines.append((0, 1))
+        self.composite_lines.append((1, 2))
+        self.composite_lines.append((2, 3))
+        self.composite_lines.append((3, 0))
 
         verts = np.empty([len(self.composite_points), 2])
         i = 0
@@ -90,7 +89,6 @@ class Brush:
             self.triangles.append(geometry.Triangle(t))
 
         self.setup_vbo()
-        """
 
 
     def make_brush(self, num_sides, brush_radius):
@@ -628,11 +626,13 @@ class Brush:
         print 'using:', len(redo_points), 'out of', len(self.composite_points)
 
         redo_segments = []
+        seg_set = set(self.composite_lines)
         for l in self.composite_lines:
             if l[0] in mapping and l[1] in mapping:
                 index1 = mapping[l[0]]
                 index2 = mapping[l[1]]
                 redo_segments.append([index1, index2])
+                seg_set.remove(l)
 
         redo_starting_value = len(redo_points)
 
@@ -663,8 +663,8 @@ class Brush:
 
         def triangulation_two():
             for l in lines:
-                seg1 = [l[0]+starting_value,l[1]+starting_value]
-                self.composite_lines.append(seg1)
+                #seg1 = [l[0]+starting_value,l[1]+starting_value]
+                #self.composite_lines.append(seg1)
                 seg2 = [l[0]+redo_starting_value,l[1]+redo_starting_value]
                 redo_segments.append(seg2)
 
@@ -682,8 +682,17 @@ class Brush:
 
                 i = i + 1
 
-            #for es in extra_segments:
-            #    redo_segments.append([mapping[es[0]], mapping[es[1]]])
+
+            print 'extra_segments',
+            for es in extra_segments:
+                if not es in seg_set and not (es[1], es[0]) in seg_set:
+                    print es,
+                    redo_segments.append([mapping[es[0]], mapping[es[1]]])
+
+            print
+            print 'redo_segments', redo_segments
+
+            pre_extra_seg_length = len(redo_segments)
 
             glClear(GL_COLOR_BUFFER_BIT)
             grid_new.draw_grid()
@@ -691,9 +700,9 @@ class Brush:
 
             glColor3f(1, 0, 1)
             glBegin(GL_LINES)
-            for r in redo_segments:
-                glVertex2f(verts[r[0]][0], verts[r[0]][1])
-                glVertex2f(verts[r[1]][0], verts[r[1]][1])
+            for r in extra_segments:
+                glVertex2f(verts[mapping[r[0]]][0], verts[mapping[r[0]]][1])
+                glVertex2f(verts[mapping[r[1]]][0], verts[mapping[r[1]]][1])
             glEnd()
 
             glPointSize(3)
@@ -711,8 +720,10 @@ class Brush:
             glEnd()
             glPointSize(1)
 
+
+
             glutSwapBuffers()
-            #raw_input('press any key')
+            raw_input('press any key')
 
             line_array = np.empty([len(redo_segments), 2])
             i = 0
@@ -722,9 +733,9 @@ class Brush:
                 i = i + 1
 
             A = dict(vertices = verts, segments = line_array)
-            return triangle.triangulate(A, 'p')
+            return triangle.triangulate(A, 'p'), pre_extra_seg_length
 
-        triangulation = triangulation_two()
+        triangulation, pre_extra_seg_length = triangulation_two()
         tri_indicies = triangulation['triangles']
         delauny_points = triangulation['vertices']
         segments = triangulation['segments']
@@ -742,7 +753,17 @@ class Brush:
             #if s[0] < pts_length or s[1] < pts_length:
             index1 = s[0]
             index2 = s[1]
-            self.composite_lines.append([convert_redo_point_to_composite(index1), convert_redo_point_to_composite(index2)])
+            seg_set.add((convert_redo_point_to_composite(index1), convert_redo_point_to_composite(index2)))
+
+        for e in extra_segments:
+            s = (e[0], e[1])
+            if s in seg_set:
+                seg_set.remove(s)
+            s = (e[1], e[0])
+            if s in seg_set:
+                seg_set.remove(s)
+
+        self.composite_lines = list(seg_set)
 
         new_tri_indicies = []
         for indicies in tri_indicies:

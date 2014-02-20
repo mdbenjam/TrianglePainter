@@ -143,6 +143,91 @@ class Grid:
 
         return None
 
+    def triangle_intersection(self, tri):
+
+        non_intersected_segments = set()
+        counter = 0
+        tried = set()
+        bad_segs = set()
+        ever_intersected = False
+
+        pts = tri.points
+
+        inside = []
+        for p1 in pts:
+            inside.append(self.point_in_triangle_acc(p1.point))
+            if inside[-1]:
+                ever_intersected = True
+
+        """
+        if ever_intersected:
+            for index, p in enumerate(pts):
+                index2 = (index + 1) % 3
+                if inside[index] is None and inside[index2] is None:
+                    non_intersected_segments.add((p.composite_point_index, tri.points[index2].composite_point_index))
+        """
+
+        if len(non_intersected_segments) == 0:
+
+            p = [pts[0].point, pts[1].point, pts[2].point]
+
+            xs = [p[0][0], p[1][0], p[2][0]]
+            ys = [p[0][1], p[1][1], p[2][1]]
+            min_x, min_y = self.convert_from_center(min(xs), min(ys))
+            max_x, max_y = self.convert_from_center(max(xs), max(ys))
+
+            x1 = int(min_x / self.x_width)
+            x2 = int(max_x / self.x_width)
+
+            y1 = int(min_y / self.y_height)
+            y2 = int(max_y / self.y_height)
+
+
+
+            for x in range(x1, x2+1):
+                for y in range(y1, y2+1):
+                    for i in self.grid[x][y]:
+                        if i in tried:
+                            break
+                        tried.add(i)
+                        print counter
+                        counter += 1
+                        pts2 = self.triangles[i].points
+                        intersected = False
+                        segments = []
+
+                        for index1, p1 in enumerate(pts):
+                            index12 = (index1 + 1) % 3
+                            for index2, p2 in enumerate(pts2):
+                                index22 = (index2 + 1) % 3
+                                if lineIntersection(p1.point, pts[index12].point, p2.point, pts2[index22].point):
+                                    intersected = True
+                                    ever_intersected = True
+                                    seg = [(p1.composite_point_index, pts[index12].composite_point_index),
+                                           (pts[index12].composite_point_index, p1.composite_point_index)]
+                                    for j in range(len(seg)):
+                                        bad_segs.add(seg[j])
+                                        if seg[j] in non_intersected_segments:
+                                            non_intersected_segments.remove(seg[j])
+                                else:
+                                    if inside[index1] or inside[index12]:
+                                        seg = [(p1.composite_point_index, pts[index12].composite_point_index),
+                                               (pts[index12].composite_point_index, p1.composite_point_index)]
+                                        for j in range(len(seg)):
+                                            bad_segs.add(seg[j])
+                                            if seg[j] in non_intersected_segments:
+                                                non_intersected_segments.remove(seg[j])
+                                    else:
+                                        seg = (p1.composite_point_index, pts[index12].composite_point_index)
+                                        if not seg in bad_segs and not (pts[index12].composite_point_index, p1.composite_point_index) in segments:
+                                            segments.append(seg)
+                        if intersected:
+                            non_intersected_segments.update(segments)
+        if ever_intersected == 0:
+            return None
+        else:
+            return list(non_intersected_segments)
+
     def get_number_triangles_part_of(self, p):
         x, y = self.convert_from_center(p.point[0], p.point[1])
         x = int(x/self.x_width)
@@ -157,19 +242,85 @@ class Grid:
     def get_unmodified_triangles(self, other, segment_graph):
         triangles = set(other.triangles)
         points = set()
-        added_segs = []
+        added_segs = set()
+        opposite_segs = set()
         for i in range(self.cols):
             for j in range(self.rows):
                 if len(self.grid[i][j]) != 0:
                     for k in other.grid[i][j]:
                         tri = other.triangles[k]
-                        if tri in triangles:
-                            triangles.remove(tri)
+                        intersection_edges = self.triangle_intersection(tri)
 
+                        if not intersection_edges is None:
+                            for p in tri.points:
+                                points.add(p)
+                            for edge in intersection_edges:
+                                if not edge in opposite_segs:
+                                    added_segs.add(edge)
+                                    opposite_segs.add((edge[1], edge[0]))
+                            if tri in triangles:
+                                triangles.remove(tri)
+        """
+
+        for i in range(self.cols):
+            for j in range(self.rows):
+                if len(self.grid[i][j]) != 0:
+                    for k in other.grid[i][j]:
+                        tri = other.triangles[k]
+
+                        contains_one = False
+                        inside_tri = []
                         for p in tri.points:
+                            inside_tri.append(self.point_in_triangle_acc(p.point))
+                            if not inside_tri[-1] is None:
+                                contains_one = True
                             #if self.point_in_occupied_grid(p.point):
-                            points.add(p)
 
+                        if contains_one:
+                            for index, p in enumerate(tri.points):
+                                index2 = (index + 1) % 3
+                                if inside_tri[index] is None and inside_tri[index2] is None:
+                                    added_segs.add((p.composite_point_index, tri.points[index2].composite_point_index))
+
+                                points.add(p)
+                            if tri in triangles:
+                                triangles.remove(tri)
+        """
+
+        """
+                if len(other.grid[i][j]) != 0:
+                    for k in self.grid[i][j]:
+                        tri = self.triangles[k]
+
+                        contains_one = False
+                        for p in tri.points:
+                            inside_triangle = other.point_in_triangle_acc(p.point)
+                            if not inside_triangle is None:
+                                if inside_triangle in triangles:
+                                    triangles.remove(inside_triangle)
+                                for index, p2 in enumerate(inside_triangle.points):
+                                    index2 = (index + 1) % 3
+                                    points.add(p2)
+                                    added_segs.append([p2.composite_point_index, inside_triangle.points[index2].composite_point_index])
+
+                        for h in self.grid[i][j]:
+                            tri2 = self.triangles[h]
+
+                            contains_one = False
+                            pts = tri.points
+                            pts = [pts[0].point, pts[1].point, pts[2].point]
+                            for p in tri2.points:
+                                if pointInTriangle(p.point, pts):
+                                    contains_one = True
+                                    break
+
+                            if contains_one:
+                                #print 'adding contained triangle'
+                                for p in tri.points:
+                                    points.add(p)
+                                if tri in triangles:
+                                    triangles.remove(tri)
+                        """
         """
         new_triangles = set()
         for tri in triangles:
@@ -189,7 +340,6 @@ class Grid:
             if not remove:
                 new_triangles.add(tri)
         triangles = new_triangles
-        """
         for t in other.triangles:
             for i, p in enumerate(t.points):
                 p1 = t.points[(i+1)%3]
@@ -199,8 +349,9 @@ class Grid:
                 bool3 = p in points
                 if not bool3 and bool1 and bool2:
                     added_segs.append([p1.composite_point_index, p2.composite_point_index])
+        """
 
-        return list(triangles), list(points), added_segs
+        return list(triangles), list(points), list(added_segs)
 
     def draw_grid(self):
         glColor3f(0.5, 1, 0.5)
@@ -372,7 +523,7 @@ def pointInQuad(p, quad):
             return False
     return True
 
-def lineIntersection(self, p1, p2, p3, p4):
+def lineIntersection(p1, p2, p3, p4):
     if max(p1[0], p2[0]) < min(p3[0], p4[0]):
         return None
 
