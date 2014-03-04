@@ -76,6 +76,8 @@ class Triangle:
         self.points = []
         for i in range(3):
             self.points.append(TrianglePoint(file=f))
+        self.centroid = getCentroid(self.points)
+        self.color = None
 
 class Grid:
 
@@ -228,6 +230,74 @@ class Grid:
         else:
             return list(non_intersected_segments)
 
+    def has_grid_line_intersection(self, p1, p2, p3):
+        if self.point_in_occupied_grid(p1) or self.point_in_occupied_grid(p2):
+            return True
+        p1_convert = self.convert_from_center(p1[0], p1[1])
+        p2_convert = self.convert_from_center(p2[0], p2[1])
+
+        dy = float(p1_convert[1] - p2_convert[1])
+        dx = float(p1_convert[0] - p2_convert[0])
+        if dx == 0:
+            dx = .001
+        m = dy/dx
+        b = p1_convert[1] - m*p1_convert[0]
+
+        xs = [p1[0], p2[0]]
+        ys = [p1[1], p2[1]]
+        min_x, min_y = self.convert_from_center(min(xs), min(ys))
+        max_x, max_y = self.convert_from_center(max(xs), max(ys))
+
+        x1 = int(min_x / self.x_width)
+        x2 = int(max_x / self.x_width)
+
+        y1 = int(min_y / self.y_height)
+        y2 = int(max_y / self.y_height)
+
+        #for x in range(x1+1, x2+1):
+        #    for y in range(y1+1, y2+1):
+        #        if self.grid[x][y] > 0:
+        #            if pointInTriangle((x, y), (p1, p2, p3)):
+        #                return True
+
+        for x in range(x1+1, x2+1):
+            y = m * x * self.x_width + b
+            y_grid = int(y / self.y_height)
+            if y1 <= y_grid <= y2 and (len(self.grid[x-1][y_grid]) > 0 or len(self.grid[x][y_grid]) > 0):
+                draw_point = self.convert_to_center(x*self.x_width, y)
+                glColor3f(0, 0, 1)
+                glBegin(GL_LINES)
+                glVertex2f(p1[0], p1[1])
+                glVertex2f(p2[0], p2[1])
+                glEnd()
+                glBegin(GL_POINTS)
+                glVertex2f(draw_point[0], draw_point[1])
+                glEnd()
+                return True
+
+        for y in range(y1+1, y2+1):
+            x = (y * self.y_height - b)/m
+            x_grid = int(x / self.x_width)
+            if x1 <= x_grid <= x2 and (len(self.grid[x_grid][y-1]) > 0 or len(self.grid[x_grid][y]) > 0):
+                print 'here2', x, y
+                draw_point = self.convert_to_center(x, y*self.y_height)
+                glColor3f(0, 1, 1)
+                glBegin(GL_LINES)
+                glVertex2f(p1[0], p1[1])
+                glVertex2f(p2[0], p2[1])
+                glEnd()
+                glBegin(GL_POINTS)
+                glVertex2f(draw_point[0], draw_point[1])
+                glEnd()
+                return True
+
+        glColor3f(0, 0, 0)
+        glBegin(GL_LINES)
+        glVertex2f(p1[0], p1[1])
+        glVertex2f(p2[0], p2[1])
+        glEnd()
+        return False
+
     def get_number_triangles_part_of(self, p):
         x, y = self.convert_from_center(p.point[0], p.point[1])
         x = int(x/self.x_width)
@@ -240,17 +310,53 @@ class Grid:
 
 
     def get_unmodified_triangles(self, other, segment_graph):
+
+        glPointSize(5)
+
+        glColor3f(0, 0, 1)
+
         triangles = set(other.triangles)
         points = set()
         added_segs = set()
         opposite_segs = set()
+        counter = 0
         for i in range(self.cols):
             for j in range(self.rows):
                 if len(self.grid[i][j]) != 0:
                     for k in other.grid[i][j]:
                         tri = other.triangles[k]
-                        intersection_edges = self.triangle_intersection(tri)
+                        if not tri in triangles:
+                            continue
+                        print 'counter', counter
+                        counter += 1
 
+                        point_in_grid = []
+                        at_least_one = False
+                        for h, p in enumerate(tri.points):
+                            h2 = (h+1)%3
+                            h3 = (h+2)%3
+                            point_in_grid.append(self.has_grid_line_intersection(p.point, tri.points[h2].point, tri.points[h3].point))
+                            if point_in_grid[-1]:
+                                at_least_one = True
+
+                        if at_least_one:
+                            if tri in triangles:
+                                triangles.remove(tri)
+                            for h, p in enumerate(tri.points):
+                                points.add(p)
+                                h2 = (h+1)%3
+                                print 'point_in_grid', point_in_grid[h]
+                                if not point_in_grid[h]:#not point_in_grid[i] and not point_in_grid[i2] and point_in_grid[i3]:
+                                    edge = (p.composite_point_index, tri.points[h2].composite_point_index)
+                                    if not edge in opposite_segs:
+                                        added_segs.add(edge)
+                                        opposite_segs.add((edge[1], edge[0]))
+
+                        #glBegin(GL_TRIANGLES)
+                        #tri.draw_color((1, .5, 0))
+                        #glEnd()
+
+                        """
                         if not intersection_edges is None:
                             for p in tri.points:
                                 points.add(p)
@@ -260,6 +366,7 @@ class Grid:
                                     opposite_segs.add((edge[1], edge[0]))
                             if tri in triangles:
                                 triangles.remove(tri)
+                        """
         """
 
         for i in range(self.cols):
@@ -350,11 +457,15 @@ class Grid:
                 if not bool3 and bool1 and bool2:
                     added_segs.append([p1.composite_point_index, p2.composite_point_index])
         """
+        glPointSize(1)
 
         return list(triangles), list(points), list(added_segs)
 
-    def draw_grid(self):
-        glColor3f(0.5, 1, 0.5)
+    def draw_grid(self, flag = False):
+        if flag:
+            glColor4f(0, 0, 1, 0.5)
+        else:
+            glColor4f(0.5, 1, 0.5, 1)
         for i in range(self.cols):
             for j in range(self.rows):
                 x1, y1 = self.convert_to_center(i * self.x_width, j * self.y_height)
@@ -369,7 +480,31 @@ class Grid:
                 glVertex2f(x1, y2)
                 glEnd()
 
-
+    def examine_grid(self, other):
+        for i in range(self.cols):
+            for j in range(self.rows):
+                if len(self.grid[i][j]) > 0:
+                    glClear(GL_COLOR_BUFFER_BIT)
+                    for t in other.triangles:
+                        glBegin(GL_LINE_LOOP)
+                        t.draw_color((0,0,0))
+                        glEnd()
+                    glColor4f(0.5, 1, 0.5, 1)
+                    x1, y1 = self.convert_to_center(i * self.x_width, j * self.y_height)
+                    x2, y2 = self.convert_to_center((i+1) * self.x_width, (j+1) * self.y_height)
+                    glBegin(GL_QUADS)
+                    glVertex2f(x1, y1)
+                    glVertex2f(x2, y1)
+                    glVertex2f(x2, y2)
+                    glVertex2f(x1, y2)
+                    glEnd()
+                    for k in other.grid[i][j]:
+                        tri = other.triangles[k]
+                        glBegin(GL_LINE_LOOP)
+                        tri.draw_color((1, .5, 0))
+                        glEnd()
+                    glutSwapBuffers()
+                    raw_input('press any key')
 
 class ColorRegion:
     def __init__(self, color, start_angle, end_angle):
@@ -459,6 +594,8 @@ class TrianglePoint:
     def save(self, f):
         f.write(str(self.point[0])+','+str(self.point[1]))
         f.write(':')
+        f.write(str(self.composite_point_index))
+        f.write(':')
         f.write(str(len(self.color_regions)))
         f.write('\n')
         for c in self.color_regions:
@@ -466,15 +603,18 @@ class TrianglePoint:
                         str(c.color[1])+','+
                         str(c.color[2])+','+
                         str(c.color[3])+','+
-                        str(c.start_angle)+','+
-                        str(c.end_angle)+'\n')
+                        str(c.start_angle[0])+','+
+                        str(c.start_angle[1])+','+
+                        str(c.end_angle[0])+','+
+                        str(c.end_angle[1])+'\n')
 
 
     def load(self, f):
         line = f.readline()
         s = line.split(':')
         point = s[0].split(',')
-        num = int(s[1])
+        self.composite_point_index = int(s[1])
+        num = int(s[2])
         self.color_regions = []
         for i in range(num):
             c = f.readline().split(',')
@@ -482,8 +622,10 @@ class TrianglePoint:
                                        float(c[1]),
                                        float(c[2]),
                                        float(c[3])],
-                                       float(c[4]),
-                                       float(c[5])))
+                                       np.array([float(c[4]),
+                                       float(c[5])]),
+                                       np.array([float(c[6]),
+                                        float(c[7])])))
 
 
         self.point = [float(point[0]), float(point[1])]

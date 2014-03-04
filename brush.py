@@ -177,7 +177,7 @@ class Brush:
 
         glEnd()
         glutSwapBuffers()
-        raw_input('press any key')
+        #raw_input('press any key')
 
     def draw_triangles(self, flag):
         if not (self.triangle_vertices_vbo is None):
@@ -616,7 +616,25 @@ class Brush:
             graph[s[0]].append(s[1])
             graph[s[1]].append(s[0])
 
+
+        #if len(self.triangles) > 5:
+        #    grid_new.examine_grid(grid_old)
+
+        glClear(GL_COLOR_BUFFER_BIT)
+        grid_new.draw_grid()
+
+
+        for t in self.triangles:
+            glBegin(GL_LINE_LOOP)
+            t.draw_color((1,0,0))
+            glEnd()
+
+
+
         old_triangles, redo_points, extra_segments = grid_new.get_unmodified_triangles(grid_old, graph)
+
+        glutSwapBuffers()
+        #raw_input('press any key')
 
         print 'length of old_triangles', len(old_triangles)
         for p in redo_points:
@@ -698,6 +716,11 @@ class Brush:
             grid_new.draw_grid()
 
 
+            #for t in self.triangles:
+            #    glBegin(GL_LINE_LOOP)
+            #    t.draw_color((0,0,0))
+            #    glEnd()
+
             glColor3f(1, 0, 1)
             glBegin(GL_LINES)
             for r in extra_segments:
@@ -732,8 +755,13 @@ class Brush:
                 line_array[i, 1] = l[1]
                 i = i + 1
 
+            print 'before triangulation'
             A = dict(vertices = verts, segments = line_array)
-            return triangle.triangulate(A, 'p'), pre_extra_seg_length
+            print self.composite_points
+            print self.composite_lines
+            ret = triangle.triangulate(A, 'p'), pre_extra_seg_length
+            print 'after triangulation'
+            return ret
 
         triangulation, pre_extra_seg_length = triangulation_two()
         tri_indicies = triangulation['triangles']
@@ -1151,11 +1179,11 @@ class Brush:
             t.save(f)
         f.close()
 
-    def load(self, in_name, window):
-        f = open(in_name, 'r')
+    def load_helper(self, f):
         self.composite_points = []
         self.composite_lines = []
         self.triangles = []
+        self.delauny_points = []
         num_points = int(f.readline())
         for i in range(num_points):
             self.composite_points.append(geometry.TrianglePoint(file=f))
@@ -1164,16 +1192,32 @@ class Brush:
         for i in range(num_lines):
             line = f.readline()
             s = line.split(',')
-            self.composite_lines.append([int(s[0]),int(s[1])])
+            self.composite_lines.append((int(s[0]),int(s[1])))
 
         num_triangles = int(f.readline())
         for i in range(num_triangles):
             self.triangles.append(geometry.Triangle(file=f))
 
-        self.stroke_over = False
-        self.clear_stroke(window)
-        self.stroke_over = True
+        for d in self.composite_points:
+            self.delauny_points.append(d.point)
+
+        #self.stroke_over = False
+        #self.clear_stroke(window)
+        #self.stroke_over = True
+        self.setup_vbo()
+
+    def load(self, in_name, window):
+        f = open(in_name, 'r')
+        self.load_helper(f)
+
         f.close()
+        print 'lines', self.composite_lines
+        print len(self.composite_points)
+        print 'points',
+        for i, p in enumerate(self.composite_points):
+            print p.composite_point_index,
+        print
+
 
     def save_action(self, out_name):
         self.save(out_name)
@@ -1199,19 +1243,8 @@ class Brush:
         self.triangles = []
         self.current_quads = []
         self.fall_off_current_quads = []
-        num_points = int(f.readline())
-        for i in range(num_points):
-            self.composite_points.append(geometry.TrianglePoint(file=f))
 
-        num_lines = int(f.readline())
-        for i in range(num_lines):
-            line = f.readline()
-            s = line.split(',')
-            self.composite_lines.append([int(s[0]),int(s[1])])
-
-        num_triangles = int(f.readline())
-        for i in range(num_triangles):
-            self.triangles.append(geometry.Triangle(file=f))
+        self.load_helper(f)
 
         num_quads = int(f.readline())
         color = f.readline().split(',')
