@@ -217,7 +217,14 @@ class Brush:
                 t.draw_color((1,0,0))
                 glEnd()
 
-
+            glColor3f(0,0,1)
+            glBegin(GL_LINES)
+            for s in self.composite_lines:
+                p1 = self.composite_points[s[0]].point
+                p2 = self.composite_points[s[1]].point
+                glVertex2f(p1[0], p1[1])
+                glVertex2f(p2[0], p2[1])
+            glEnd()
 
             glPointSize(3.0)
             glBegin(GL_POINTS)
@@ -631,7 +638,7 @@ class Brush:
 
 
 
-        old_triangles, redo_points, extra_segments = grid_new.get_unmodified_triangles(grid_old, graph)
+        old_triangles, redo_points, extra_segments, hole_points = grid_new.get_unmodified_triangles(grid_old, graph)
 
         glutSwapBuffers()
         #raw_input('press any key')
@@ -741,12 +748,25 @@ class Brush:
             for r in redo_points:
                 glVertex2f(r.point[0], r.point[1])
             glEnd()
+
+            glColor3f(0, 0, 0)
+            glBegin(GL_POINTS)
+            for r in hole_points:
+                glVertex2f(r[0], r[1])
+            glEnd()
+
             glPointSize(1)
 
 
+            glColor3f(0, 0, 1)
+            glBegin(GL_LINES)
+            for r in redo_segments:
+                glVertex2f(verts[r[0]][0], verts[r[0]][1])
+                glVertex2f(verts[r[1]][0], verts[r[1]][1])
+            glEnd()
 
             glutSwapBuffers()
-            raw_input('press any key')
+            #raw_input('press any key')
 
             line_array = np.empty([len(redo_segments), 2])
             i = 0
@@ -755,8 +775,20 @@ class Brush:
                 line_array[i, 1] = l[1]
                 i = i + 1
 
+            hole_array = np.empty([len(hole_points), 2])
+            i = 0
+            for p in hole_points:
+                hole_array[i, 0] = p[0]
+                hole_array[i, 1] = p[1]
+                i = i + 1
+
+            print 'hole_array', hole_array
+
             print 'before triangulation'
-            A = dict(vertices = verts, segments = line_array)
+            if i == 0:
+                A = dict(vertices = verts, segments = line_array)#, holes = hole_array)
+            else:
+                A = dict(vertices = verts, segments = line_array, holes = hole_array)
             print self.composite_points
             print self.composite_lines
             ret = triangle.triangulate(A, 'p'), pre_extra_seg_length
@@ -783,13 +815,17 @@ class Brush:
             index2 = s[1]
             seg_set.add((convert_redo_point_to_composite(index1), convert_redo_point_to_composite(index2)))
 
+        original_segments_set = set(self.composite_lines)
+
         for e in extra_segments:
             s = (e[0], e[1])
-            if s in seg_set:
-                seg_set.remove(s)
-            s = (e[1], e[0])
-            if s in seg_set:
-                seg_set.remove(s)
+            s2 = (e[1], e[0])
+            if not s in original_segments_set and not s2 in original_segments_set:
+                if s in seg_set:
+                    seg_set.remove(s)
+                s = (e[1], e[0])
+                if s in seg_set:
+                    seg_set.remove(s)
 
         self.composite_lines = list(seg_set)
 

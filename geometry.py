@@ -145,6 +145,18 @@ class Grid:
 
         return None
 
+    def point_in_triangle_slow(self, p):
+        for t in self.triangles:
+            if self.is_triangle:
+                pts = t.points
+                if pointInTriangle(p, [pts[0].point, pts[1].point, pts[2].point]):
+                    return t
+            else:
+                if pointInTriangle(p, t):
+                    return t
+
+        return None
+
     def triangle_intersection(self, tri):
 
         non_intersected_segments = set()
@@ -315,9 +327,25 @@ class Grid:
 
         glColor3f(0, 0, 1)
 
+        triangle_map = {}
+        for t in other.triangles:
+            for i in range(len(t.points)):
+                p1 = t.points[i].composite_point_index
+                p2 = t.points[(i+1)%3].composite_point_index
+                if (p1, p2) in triangle_map:
+                    triangle_map[(p1, p2)].append(t)
+                else:
+                    triangle_map[(p1, p2)] = [t]
+
+                if (p2, p1) in triangle_map:
+                    triangle_map[(p2, p1)].append(t)
+                else:
+                    triangle_map[(p2, p1)] = [t]
+
         triangles = set(other.triangles)
         points = set()
-        added_segs = set()
+        added_segs = {}
+        hole_points = set()
         opposite_segs = set()
         counter = 0
         for i in range(self.cols):
@@ -349,7 +377,13 @@ class Grid:
                                 if not point_in_grid[h]:#not point_in_grid[i] and not point_in_grid[i2] and point_in_grid[i3]:
                                     edge = (p.composite_point_index, tri.points[h2].composite_point_index)
                                     if not edge in opposite_segs:
-                                        added_segs.add(edge)
+                                        involved_triangles = triangle_map[edge]
+                                        added_segs[edge] = None
+                                        for involved_triangle in involved_triangles:
+                                            if involved_triangle != tri:
+                                                added_segs[edge] = involved_triangle
+                                                break
+
                                         opposite_segs.add((edge[1], edge[0]))
 
                         #glBegin(GL_TRIANGLES)
@@ -458,8 +492,61 @@ class Grid:
                     added_segs.append([p1.composite_point_index, p2.composite_point_index])
         """
         glPointSize(1)
+        """
+        graph = {}
+        for k,v in added_segs.iteritems():
+            print k
+            if k[0] in graph:
+                graph[k[0]].append((k[1], v))
+            else:
+                graph[k[0]] = [(k[1], v)]
 
-        return list(triangles), list(points), list(added_segs)
+            if k[1] in graph:
+                graph[k[1]].append((k[0], v))
+            else:
+                graph[k[1]] = [(k[0], v)]
+
+        def remove_other_k(k):
+            other_k = graph[k][0][0]
+            graph[k] = []
+            new_v = []
+            for v in graph[other_k]:
+                if v[0] != k:
+                    new_v.append(v)
+            graph[other_k] = new_v
+            if len(new_v) == 1:
+                remove_other_k(new_v[0][0])
+
+        print 'graph 1', graph
+
+        for k in graph.keys():
+            v = graph[k]
+            if len(v) == 1:
+                print 'removing a point'
+                #remove_other_k(k)
+
+        print 'graph 2', graph
+
+        added_segs_list = []
+        hole_point_list = []
+        for k, v in graph.iteritems():
+            for k2 in v:
+                added_segs_list.append((k, k2[0]))
+                if not k2[1] is None:
+                    hole_point_list.append(k2[1].centroid)
+        """
+        added_segs_list = []
+        hole_point_list = []
+        for k, v in added_segs.iteritems():
+            added_segs_list.append(k)
+            if not v is None:
+                p = v.centroid
+                tri_inside = other.point_in_triangle_acc(p)
+                if tri_inside in triangles:
+                    hole_point_list.append(p)
+
+
+        return list(triangles), list(points), list(added_segs.keys()), hole_point_list
 
     def draw_grid(self, flag = False):
         if flag:
