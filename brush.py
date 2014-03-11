@@ -14,7 +14,8 @@ import geometry
 from profilehooks import profile
 import time
 
-debug = False
+debug = True
+
 
 class Brush:
 
@@ -587,7 +588,14 @@ class Brush:
                         regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,0])]
                                    #geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
 
+                print 'index', index
+                print 'before'
+                for r in regions:
+                    print r.color, r.start_angle, r.end_angle
                 t = geometry.TrianglePoint(p,regions, composite_point_index=len(self.composite_points))
+                print 'after'
+                for r in t.color_regions:
+                    print r.color, r.start_angle, r.end_angle
                 self.composite_points.append(t)
                 index = index + 1
 
@@ -719,6 +727,7 @@ class Brush:
 
             pre_extra_seg_length = len(redo_segments)
 
+            """
             glClear(GL_COLOR_BUFFER_BIT)
             grid_new.draw_grid()
 
@@ -767,6 +776,7 @@ class Brush:
 
             glutSwapBuffers()
             #raw_input('press any key')
+            """
 
             line_array = np.empty([len(redo_segments), 2])
             i = 0
@@ -866,15 +876,58 @@ class Brush:
 
 
 
+        draw_point_coloring = False
         def color_index(index):
             if marked[index]:
                 return
-
+            visited = set()
             marked[index] = True
             color_regions = []
             angles = []
             p1 = delauny_points[index]
             for s in graph[index]:
+
+                if draw_point_coloring:
+                    p = p1
+                    glMatrixMode(GL_PROJECTION)
+                    glLoadIdentity()
+                    glOrtho(p[0] - 200, p[0] + 200, p[1] - 200, p[1] + 200,
+                            -1,
+                            1)
+
+                    glMatrixMode(GL_MODELVIEW)
+                    glLoadIdentity()
+
+                    glClear(GL_COLOR_BUFFER_BIT)
+
+                    for t in self.triangles:
+                        glBegin(GL_LINE_LOOP)
+                        t.draw_color((1,0,0))
+                        glEnd()
+
+                    glPointSize(3)
+
+                    glColor3f(1, 0.5, 0)
+                    glBegin(GL_POINTS)
+                    for r in self.composite_points:
+                        glVertex2f(r.point[0], r.point[1])
+                    glEnd()
+
+
+
+                    glPointSize(10)
+                    glBegin(GL_POINTS)
+                    glColor3f(0, 1, 1)
+                    glVertex2f(p[0], p[1])
+
+                    glColor3f(1, 0, 1)
+                    p = delauny_points[s]
+                    glVertex2f(p[0], p[1])
+                    glEnd()
+                    glPointSize(1)
+
+                    glutSwapBuffers()
+                    raw_input('press any key')
 
                 p2 = delauny_points[s]
 
@@ -886,31 +939,46 @@ class Brush:
                 i = s
                 last_i = i
                 while i >= len(self.composite_points):
+                    print 'is i already visited?', i in visited
+                    visited.add(i)
+
                     angle2 = []
                     for b in graph[i]:
+                        if b in visited:
+                            angle2.append(-1)
+                            continue
                         p2 = delauny_points[b]
                         hold = np.array([p2[0]-p1[0], p2[1]-p1[1]])
                         norm = np.linalg.norm(hold)
                         if norm == 0:
+                            angle2.append(-1)
                             continue
                         hold = hold/norm
                         angle2.append(np.dot(hold, angle))
-                    if graph[i][0] != last_i:
+                    if not graph[i][0] in visited:
                         max_dot = angle2[0]
                         max_index = 0
                     else:
                         max_dot = angle2[1]
                         max_index = 1
                     for a in range(1,len(angle2)):
-                        if angle2[a] > max_dot and graph[i][a] != last_i:
+                        if angle2[a] > max_dot and not graph[i][a] in visited:
                             max_dot = angle2[a]
                             max_index = a
                     last_i = i
+                    print 'max_dot', max_dot
+                    p2 = delauny_points[max_index]
+                    hold = np.array([p2[0]-p1[0], p2[1]-p1[1]])
+                    print 'real_dot', np.dot(hold, angle)/np.linalg.norm(hold)
+
                     i = graph[i][max_index]
 
                 p2 = delauny_points[i]
 
                 angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
+                print angle
+                for cr in all_points[i].color_regions:
+                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
 
                 def gen_color_range(angle1, angle2, p, index):
                     """
@@ -937,13 +1005,24 @@ class Brush:
                     c2 = c_r2[min_index].color
                     """
 
-                    dx = angle1[0][0]
-                    dy = angle1[0][1]
+                    # TODO: Figure out a more stable approach. The /1000 is needed to avoid crossing a boundary when
+                    # dealing with really small triangles!
+                    dx = angle1[0][0]/1000.0
+                    dy = angle1[0][1]/1000.0
                     p2 = [p[0]-dy, p[1]+dx]
                     centroid1 = geometry.getCentroidPoints([p, p2, angle1[1].point])
                     centroid2 = geometry.getCentroidPoints([p, p2, angle2[1].point])
-                    c1 = angle1[1].get_current_color(p2)#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
+                    #c1 = geometry.get_color(angle1[1].color_regions, [-dy, dx])#(p2)#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
+                    c1 = angle1[1].get_current_color(p2)#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
                     c2 = angle2[1].get_current_color(p2)#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
+                    #print 'p, p2', p, p2
+                    print 'c1', c1
+                    #for cr in angle1[1].color_regions:
+                    #    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
+                    print 'c2', c2
+                    #for cr in angle2[1].color_regions:
+                    #    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
+
                     dist = math.sqrt ((angle1[1].point[0] - angle2[1].point[0])**2
                                       + (angle1[1].point[1] - angle2[1].point[1])**2)
                     d1 = math.sqrt (angle1[2])
@@ -973,14 +1052,84 @@ class Brush:
                         return [range1]
 
             flag = False
+            min_val = 1
+            min_index = -1
             for i in range(1,len(angles)):
                 a = angles[i]
+
+                if draw_point_coloring:
+                    p = delauny_points[index]
+
+                    glMatrixMode(GL_PROJECTION)
+                    glLoadIdentity()
+                    glOrtho(p[0] - 200, p[0] + 200, p[1] - 200, p[1] + 200,
+                            -1,
+                            1)
+
+                    glMatrixMode(GL_MODELVIEW)
+                    glLoadIdentity()
+
+                    glClear(GL_COLOR_BUFFER_BIT)
+
+                    for t in self.triangles:
+                        glBegin(GL_LINE_LOOP)
+                        t.draw_color((1,0,0))
+                        glEnd()
+
+                    glPointSize(3)
+
+                    glColor3f(0, 0, 1)
+                    glBegin(GL_POINTS)
+                    for r in self.composite_points:
+                        glVertex2f(r.point[0], r.point[1])
+                    glEnd()
+
+
+
+                    glPointSize(10)
+                    glBegin(GL_POINTS)
+                    glColor3f(0, 1, 1)
+                    glVertex2f(p[0], p[1])
+
+                    glColor3f(1, 0, 1)
+                    p = a[1]
+                    glVertex2f(p.point[0], p.point[1])
+                    glEnd()
+                    glPointSize(1)
+
+                    glutSwapBuffers()
+                    raw_input('press any key')
+
                 other_indicies = range(1, len(angles))
-                if np.dot(a[0], angles[0][0]) < -.999:
-                    range1 = [gen_color_range(angles[0], a, p1, index), gen_color_range(a, angles[0], p1, index)]
-                    other_indicies.remove(i)
-                    color_regions = get_other_range(other_indicies, range1, p1, index)
-                    flag = True
+
+                dot_prod = np.dot(a[0], angles[0][0])
+                if dot_prod < min_val:
+                    min_index = i
+                    min_val = dot_prod
+
+            i = min_index
+            if i > 0:
+                print 'min_val', min_val
+                a = angles[i]
+                for cr in angles[0][1].color_regions:
+                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
+                for cr in a[1].color_regions:
+                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
+
+                print '-----'
+                for j in range(4):
+                    for cr in angles[j][1].color_regions:
+                        print 'j color_range', j, angles[j][0], cr.color, cr.start_angle, cr.end_angle
+
+                range1 = [gen_color_range(angles[0], a, p1, index), gen_color_range(a, angles[0], p1, index)]
+                print a, angles[0]
+                other_indicies.remove(i)
+                color_regions = get_other_range(other_indicies, range1, p1, index)
+                for cr in color_regions:
+                    print 'color', cr.color
+                    print 'start', cr.start_angle
+                    print 'end', cr.end_angle
+                flag = True
 
 
             if len(angles) == 1:

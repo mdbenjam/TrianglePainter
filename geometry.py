@@ -600,6 +600,10 @@ class ColorRegion:
         self.end_angle = end_angle
 
 def composite_ranges(bottom_range, top_range):
+    for t in top_range:
+        print 'top range', t.color, t.start_angle, t.end_angle
+    for b in bottom_range:
+        print 'bottom range', b.color, b.start_angle, b.end_angle
     color_ranges = []
 
     for t in top_range:
@@ -607,7 +611,8 @@ def composite_ranges(bottom_range, top_range):
             if angle_between(b.start_angle, t.start_angle, b.end_angle):
                 if angle_between(b.start_angle, t.end_angle, b.end_angle):
                     color_ranges.append(ColorRegion(color_over(b.color, t.color), t.start_angle, t.end_angle))
-                color_ranges.append(ColorRegion(color_over(b.color, t.color), t.start_angle, b.end_angle))
+                else:
+                    color_ranges.append(ColorRegion(color_over(b.color, t.color), t.start_angle, b.end_angle))
             elif angle_between(b.start_angle, t.end_angle, b.end_angle):
                 color_ranges.append(ColorRegion(color_over(b.color, t.color), b.start_angle, t.end_angle))
             elif (angle_between(t.start_angle, b.start_angle, t.end_angle) and
