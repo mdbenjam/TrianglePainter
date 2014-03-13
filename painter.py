@@ -93,6 +93,8 @@ class Painter:
         glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glClearColor(1.0, 1.0, 1.0, 1.0)
 
+
+
     def zoom(self, z, x, y):
         x = float(x) / self.window.width - .5
         y = float(y) / self.window.height - .5
@@ -125,6 +127,7 @@ class Painter:
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
+        glEnable(GL_MULTISAMPLE)
         """
         glBegin(GL_TRIANGLES)
         glColor3f(0,0,0)
@@ -171,6 +174,7 @@ class Painter:
         self.output(10, 10, 'X, Y: '+str(xcoord)+' '+str(ycoord))
 
         glutSwapBuffers()
+        glDisable(GL_MULTISAMPLE)
 
     # The function called whenever a key is pressed. Note the use of Python tuples to pass in: (key, x, y)  
     def keyPressed(self, *args):
@@ -302,6 +306,8 @@ class Painter:
         self.mouse.mouseX = x
         self.mouse.mouseY = y
 
+
+
 def main():
     global window
     global out_name
@@ -318,7 +324,7 @@ def main():
     #  Double buffer 
     #  RGBA color
     # Alpha components supported 
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA)
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_MULTISAMPLE)
 
     # get a 640 x 480 window 
     glutInitWindowSize(window_width, window_height)

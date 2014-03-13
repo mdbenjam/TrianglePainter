@@ -13,9 +13,9 @@ import sys
 import geometry
 from profilehooks import profile
 import time
+import random
 
 debug = True
-
 
 class Brush:
 
@@ -404,7 +404,9 @@ class Brush:
         def draw_and_read():
             glClear(GL_COLOR_BUFFER_BIT)
             self.timer_start()
+            glEnable( GL_MULTISAMPLE )
             self.draw_stroke(black=True)
+            glDisable( GL_MULTISAMPLE )
             self.timer_end()
             print '^ draw time'
             self.timer_start()
@@ -437,82 +439,106 @@ class Brush:
                     (contour[i][j][0], contour[i][j][1]) = window.to_world_coords(contour[i][j][1], window.height - contour[i][j][0])
 
 
-            for c in contour:
-                if len(c) < 2:
-                    continue
-                last_p = c[0]
+            def iterate_pruning():
+                for c in contour:
+                    if len(c) < 2:
+                        continue
+                    last_p = c[0]
 
-                r = .5
-                contour_hole = False
+                    r = .5
+                    contour_hole = False
 
-                last_angle = None
-                first_angle = None
-                #TODO: REMOVE 480
-                self.triangle_points.append((last_p[0], last_p[1]))
-                first_index = len(self.triangle_points)-1
+                    last_angle = None
+                    first_angle = None
+                    #TODO: REMOVE 480
+                    self.triangle_points.append((last_p[0], last_p[1]))
+                    first_index = len(self.triangle_points)-1
 
-                #TODO: Check for closed
-                USE_EVERY = 5
-                current_count = 0
-                last_points = []
-                last_five_points = []
-
-                for p in c[1:-1]:
-
-                    current_count = current_count + 1
-                    last_points.append(p)
-                    last_five_points.append(p)
-                    n = np.array([last_p[0]-p[0], last_p[1]-p[1]])
-                    n = n/np.linalg.norm(n)
-                    line_test_failed = False
-                    for p2 in last_points:
-                        vec_to_p = np.array([p[0]-p2[0], p[1]-p2[1]])
-                        if np.linalg.norm(vec_to_p-(np.dot(vec_to_p,n)*n)) > DIST_THRESHOLD:
-                            line_test_failed = True
+                    #TODO: Check for closed
+                    USE_EVERY = 5
 
 
-                    if line_test_failed:
-                        self.triangle_points.append((last_points[-1][0], last_points[-1][1]))
-                        index = len(self.triangle_points)-1
-                        lines.append([index - 1, index])
-                        first_angle = None
-                        last_angle = None
-                        last_p = last_points[-1]
-                        current_count = 0
-                        last_five_points = []
-                        last_points = []
+                    current_count = 0
+                    last_points = []
+                    last_five_points = []
+                    iterations = 0
+                    for p in c[1:-1]:
+                        current_count = current_count + 1
+                        last_five_points.append(p)
 
+                        if current_count >= USE_EVERY:
+                            last_points.append(p)
+                            n = np.array([last_p[0]-p[0], last_p[1]-p[1]])
+                            n = n/np.linalg.norm(n)
+                            line_test_failed = False
+                            """
+                            for p2 in last_five_points:
+                                iterations += 1
+                                vec_to_p = np.array([p[0]-p2[0], p[1]-p2[1]])
+                                if np.linalg.norm(vec_to_p-(np.dot(vec_to_p,n)*n)) > DIST_THRESHOLD:
+                                    line_test_failed = True
+                                    break
+                            """
+                            if not line_test_failed:
+                                last_points_length = len(last_points)
+                                if last_points_length < 5:
+                                    point_list = last_points
+                                else:
+                                    point_list = []
+                                    for index in range(5):
+                                        point_list.append(last_points[random.randint(0, last_points_length-1)])
+                                for p2 in point_list:
+                                    iterations += 1
+                                    vec_to_p = np.array([p[0]-p2[0], p[1]-p2[1]])
+                                    if np.linalg.norm(vec_to_p-(np.dot(vec_to_p,n)*n)) > DIST_THRESHOLD:
+                                        line_test_failed = True
+                                        break
 
-                    if current_count >= USE_EVERY:
-                        dy = p[1]-last_p[1]
-                        dx = p[0]-last_p[0]
-                        angle = math.atan2(dy, dx)
-                        if first_angle == None:
-                            first_angle = angle
-                            last_angle = angle
-                        else:
-                            if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
-                                    (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
-                                for p2 in last_five_points[::2]:
-                                    dy = p2[1]-last_p[1]
-                                    dx = p2[0]-last_p[0]
-                                    angle = math.atan2(dy, dx)
-                                    if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
-                                            (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
-                                        self.triangle_points.append((p2[0], p2[1]))
-                                        index = len(self.triangle_points)-1
-                                        lines.append([index - 1, index])
-                                        if contour_hole == False:
-                                            holes.append([(last_p[1]+p2[1])/2.0+math.sin(angle-math.pi/2.0)*r, 480-((last_p[0]+p2[0])/2.0+math.cos(angle-math.pi/2.0)*r)])
-                                            contour_hole = True
-
+                            if line_test_failed:
+                                self.triangle_points.append((last_points[-1][0], last_points[-1][1]))
+                                index = len(self.triangle_points)-1
+                                lines.append([index - 1, index])
                                 first_angle = None
                                 last_angle = None
-                        last_p = p
-                        current_count = 0
-                        last_five_points = []
-                        last_points = []
-                lines.append([len(self.triangle_points)-1, first_index])
+                                last_p = last_points[-1]
+                                current_count = 0
+                                last_points = []
+                            last_five_points = []
+
+                        if False: #current_count >= USE_EVERY:
+
+
+                            dy = p[1]-last_p[1]
+                            dx = p[0]-last_p[0]
+                            angle = math.atan2(dy, dx)
+                            if first_angle == None:
+                                first_angle = angle
+                                last_angle = angle
+                            else:
+                                if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                                        (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                                    for p2 in last_five_points[::2]:
+                                        dy = p2[1]-last_p[1]
+                                        dx = p2[0]-last_p[0]
+                                        angle = math.atan2(dy, dx)
+                                        if ((abs(angle-last_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-last_angle)-2*math.pi) > MAX_ANGLE_DEVIATION) or
+                                                (abs(angle-first_angle) > MAX_ANGLE_DEVIATION and abs(abs(angle-first_angle)-2*math.pi) > MAX_ANGLE_DEVIATION)):
+                                            self.triangle_points.append((p2[0], p2[1]))
+                                            index = len(self.triangle_points)-1
+                                            lines.append([index - 1, index])
+                                            if contour_hole == False:
+                                                holes.append([(last_p[1]+p2[1])/2.0+math.sin(angle-math.pi/2.0)*r, 480-((last_p[0]+p2[0])/2.0+math.cos(angle-math.pi/2.0)*r)])
+                                                contour_hole = True
+
+                                    first_angle = None
+                                    last_angle = None
+                            last_p = p
+                            current_count = 0
+                            last_five_points = []
+                            last_points = []
+                    lines.append([len(self.triangle_points)-1, first_index])
+                    print 'iterations', iterations, len(c)
+            iterate_pruning()
 
         if self.fall_off_radius == 0:
             self.contours = measure.find_contours(rvalues[:,:], .5)
@@ -588,14 +614,7 @@ class Brush:
                         regions = [geometry.ColorRegion(transparent_color, angles[index,0], angles[index,0])]
                                    #geometry.ColorRegion(transparent_color, angles[index,1], angles[index,0])]
 
-                print 'index', index
-                print 'before'
-                for r in regions:
-                    print r.color, r.start_angle, r.end_angle
                 t = geometry.TrianglePoint(p,regions, composite_point_index=len(self.composite_points))
-                print 'after'
-                for r in t.color_regions:
-                    print r.color, r.start_angle, r.end_angle
                 self.composite_points.append(t)
                 index = index + 1
 
@@ -634,7 +653,7 @@ class Brush:
 
         #if len(self.triangles) > 5:
         #    grid_new.examine_grid(grid_old)
-
+        """
         glClear(GL_COLOR_BUFFER_BIT)
         grid_new.draw_grid()
 
@@ -643,13 +662,17 @@ class Brush:
             glBegin(GL_LINE_LOOP)
             t.draw_color((1,0,0))
             glEnd()
-
-
+        glutSwapBuffers()
+        #raw_input('press any key')
+        """
 
         old_triangles, redo_points, extra_segments, hole_points = grid_new.get_unmodified_triangles(grid_old, graph)
 
-        glutSwapBuffers()
-        #raw_input('press any key')
+        boundary_points = set()
+        for es in extra_segments:
+            boundary_points.add(es[0])
+            boundary_points.add(es[1])
+
 
         print 'length of old_triangles', len(old_triangles)
         for p in redo_points:
@@ -664,8 +687,10 @@ class Brush:
             if l[0] in mapping and l[1] in mapping:
                 index1 = mapping[l[0]]
                 index2 = mapping[l[1]]
-                redo_segments.append([index1, index2])
-                seg_set.remove(l)
+                redo_segments.append((index1, index2))
+                # TODO: Maybe causing bad topology crashes
+                if not (l[0] in boundary_points and l[1] in boundary_points):
+                    seg_set.remove(l)
 
         redo_starting_value = len(redo_points)
 
@@ -767,15 +792,9 @@ class Brush:
             glPointSize(1)
 
 
-            glColor3f(0, 0, 1)
-            glBegin(GL_LINES)
-            for r in redo_segments:
-                glVertex2f(verts[r[0]][0], verts[r[0]][1])
-                glVertex2f(verts[r[1]][0], verts[r[1]][1])
-            glEnd()
 
             glutSwapBuffers()
-            #raw_input('press any key')
+            raw_input('press any key')
             """
 
             line_array = np.empty([len(redo_segments), 2])
@@ -833,9 +852,8 @@ class Brush:
             if not s in original_segments_set and not s2 in original_segments_set:
                 if s in seg_set:
                     seg_set.remove(s)
-                s = (e[1], e[0])
-                if s in seg_set:
-                    seg_set.remove(s)
+                if s2 in seg_set:
+                    seg_set.remove(s2)
 
         self.composite_lines = list(seg_set)
 
@@ -939,7 +957,6 @@ class Brush:
                 i = s
                 last_i = i
                 while i >= len(self.composite_points):
-                    print 'is i already visited?', i in visited
                     visited.add(i)
 
                     angle2 = []
@@ -966,19 +983,14 @@ class Brush:
                             max_dot = angle2[a]
                             max_index = a
                     last_i = i
-                    print 'max_dot', max_dot
                     p2 = delauny_points[max_index]
                     hold = np.array([p2[0]-p1[0], p2[1]-p1[1]])
-                    print 'real_dot', np.dot(hold, angle)/np.linalg.norm(hold)
 
                     i = graph[i][max_index]
 
                 p2 = delauny_points[i]
 
                 angles.append((angle, all_points[i], (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2, delauny_points[i], i))
-                print angle
-                for cr in all_points[i].color_regions:
-                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
 
                 def gen_color_range(angle1, angle2, p, index):
                     """
@@ -1015,13 +1027,6 @@ class Brush:
                     #c1 = geometry.get_color(angle1[1].color_regions, [-dy, dx])#(p2)#geometry.get_color(c_r1, angle1[0] + math.pi/2.0)
                     c1 = angle1[1].get_current_color(p2)#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
                     c2 = angle2[1].get_current_color(p2)#geometry.get_color(c_r2, angle1[0] + math.pi/2.0)
-                    #print 'p, p2', p, p2
-                    print 'c1', c1
-                    #for cr in angle1[1].color_regions:
-                    #    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
-                    print 'c2', c2
-                    #for cr in angle2[1].color_regions:
-                    #    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
 
                     dist = math.sqrt ((angle1[1].point[0] - angle2[1].point[0])**2
                                       + (angle1[1].point[1] - angle2[1].point[1])**2)
@@ -1109,26 +1114,11 @@ class Brush:
 
             i = min_index
             if i > 0:
-                print 'min_val', min_val
                 a = angles[i]
-                for cr in angles[0][1].color_regions:
-                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
-                for cr in a[1].color_regions:
-                    print 'point color_range', i, cr.color, cr.start_angle, cr.end_angle
-
-                print '-----'
-                for j in range(4):
-                    for cr in angles[j][1].color_regions:
-                        print 'j color_range', j, angles[j][0], cr.color, cr.start_angle, cr.end_angle
 
                 range1 = [gen_color_range(angles[0], a, p1, index), gen_color_range(a, angles[0], p1, index)]
-                print a, angles[0]
                 other_indicies.remove(i)
                 color_regions = get_other_range(other_indicies, range1, p1, index)
-                for cr in color_regions:
-                    print 'color', cr.color
-                    print 'start', cr.start_angle
-                    print 'end', cr.end_angle
                 flag = True
 
 
@@ -1206,6 +1196,7 @@ class Brush:
         self.setup_vbo()
 
 
+
         self.current_quads = []
         self.fall_off_current_quads = []
         if debug:
@@ -1223,6 +1214,7 @@ class Brush:
 
         for index in range(len(self.triangles)):
             points = self.triangles[index].points
+            # speed this up by using old information
             colors = self.triangles[index].get_colors()
             np_vbo[index*3, 0:2] = points[0].point
             np_vbo[index*3, 2:5] = colors[0][0:3]
@@ -1231,6 +1223,7 @@ class Brush:
             np_vbo[index*3+2, 0:2] = points[2].point
             np_vbo[index*3+2, 2:5] = colors[2][0:3]
 
+        # Try to do async
         self.triangle_vertices_vbo = vbo.VBO(np_vbo)
 
     def simplify(self):
