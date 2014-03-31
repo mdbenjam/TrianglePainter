@@ -225,6 +225,12 @@ class Brush:
                 p2 = self.composite_points[s[1]].point
                 glVertex2f(p1[0], p1[1])
                 glVertex2f(p2[0], p2[1])
+
+            glColor3f(0,1,0)
+            p1 = self.composite_points[self.composite_lines[-1][0]].point
+            p2 = self.composite_points[self.composite_lines[-1][1]].point
+            glVertex2f(p1[0], p1[1])
+            glVertex2f(p2[0], p2[1])
             glEnd()
 
             glPointSize(3.0)
@@ -1195,8 +1201,6 @@ class Brush:
 
         self.setup_vbo()
 
-
-
         self.current_quads = []
         self.fall_off_current_quads = []
         if debug:
@@ -1210,6 +1214,8 @@ class Brush:
 
 
     def setup_vbo(self):
+        if not self.triangle_vertices_vbo is None:
+            self.triangle_vertices_vbo.delete()
         np_vbo = np.empty((len(self.triangles)*3, 5), dtype=np.float32)
 
         for index in range(len(self.triangles)):
@@ -1336,9 +1342,112 @@ class Brush:
             self.composite_lines = segs
 
 
-        combine_arcs()
-        remove_edges()
+        #combine_arcs()
+        #remove_edges()
 
+        def edge_collapses():
+            triangle_graph = []
+            for i in range(len(self.composite_points)):
+                triangle_graph.append([])
+
+            for t in self.triangles:
+                for p in t.points:
+                    triangle_graph[p.composite_point_index].append(t)
+
+
+            graph = []
+            for i in range(len(self.composite_points)):
+                graph.append([])
+
+            for s in self.composite_lines:
+                graph[s[0]].append(s[1])
+                graph[s[1]].append(s[0])
+
+            def try_edge_collapse(e):
+                connected0 = list(graph[e[0]])
+                connected1 = list(graph[e[1]])
+
+                def collapse(point_from, point_to):
+                    set(graph[point_from])
+                    for p in graph[point_from]:
+                        if p in graph[point_to] and p != point_to:
+                            graph[point_to].append(p)
+                        if p != point_to:
+                            graph[p].append(point_to)
+
+                        graph[p].remove(point_from)
+
+                    graph[point_from] = []
+
+                    for t in triangle_graph[point_from]:
+                        new_triangle_points = [self.composite_points[point_to]]
+                        for p in t.points:
+                            if p.composite_point_index != point_to and p.composite_point_index != point_from:
+                                new_triangle_points.append(self.composite_points[p.composite_point_index])
+
+                        if len(new_triangle_points) == 3:
+                            new_t = geometry.Triangle(points=new_triangle_points)
+                            triangle_graph[point_to].append(new_t)
+
+                        for p in t.points:
+                            if p.composite_point_index != point_from:
+                                print 'beta adf'
+                                triangle_graph[p.composite_point_index].remove(t)
+                                if len(new_triangle_points) == 3:
+                                    triangle_graph[p.composite_point_index].append(new_t)
+                            else:
+                                print 'alpha adf'
+
+                    triangle_graph[point_from] = []
+                    self.composite_points[point_from] = None
+
+                collapse(e[0], e[1])
+
+            #for e in self.composite_lines:
+            #    try_edge_collapse(e)
+            try_edge_collapse(self.composite_lines[-1])
+
+            mapping = []
+            new_points = []
+            index = 0
+            for i, p in enumerate(self.composite_points):
+                if p is None:
+                    mapping.append(None)
+                else:
+                    mapping.append(index)
+                    print 'check index', p.composite_point_index, i
+                    p.composite_point_index = index
+                    new_points.append(p)
+                    index += 1
+
+            self.composite_points = new_points
+
+            triangles = set()
+            for graphs in triangle_graph:
+                for t in graphs:
+                    triangles.add(t)
+            self.triangles = list(triangles)
+
+            lines = set()
+            reverse_lines = set()
+            for i, g in enumerate(graph):
+                for p in g:
+                    l0 = (mapping[i], mapping[p])
+                    l1 = (mapping[p], mapping[i])
+                    if not l0 in reverse_lines:
+                        lines.add(l0)
+                        reverse_lines.add(l1)
+                        reverse_lines.add(l1)
+
+            self.composite_lines = list(lines)
+
+            self.delauny_points = []
+            for p in self.composite_points:
+                self.delauny_points.append(p.point)
+
+        edge_collapses()
+        self.setup_vbo()
+        print 'triangles', len(self.triangles), 'lines', len(self.composite_lines), 'points', len(self.composite_points)
 
 
     def save(self, out_name):

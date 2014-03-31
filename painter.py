@@ -230,6 +230,8 @@ class Painter:
             self.brush.cycle(-1)
         if args[0] == 'z':
             self.zooming = True
+        if args[0] == 'q':
+            self.brush.simplify()
         if args[0] == 'f':
             if self.fuzzy == 0:
                 self.fuzzy = 1
@@ -307,7 +309,6 @@ class Painter:
         self.mouse.mouseY = y
 
 
-
 def main():
     global window
     global out_name
@@ -373,5 +374,6 @@ def main():
 
 # Print message to console, and kick off the main to get it rolling.
 print "Hit ESC key to quit."
+
 main()
 
