@@ -97,6 +97,7 @@ class Grid:
         self.is_triangle = is_triangle
 
         self.grid = []
+
         for c in range(cols):
             self.grid.append([])
             for r in range(rows):
@@ -120,20 +121,26 @@ class Grid:
             y1 = int(min_y / self.y_height)
             y2 = int(max_y / self.y_height)
 
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
+            for x in range(max(0, x1), min(x2+1, self.cols)):
+                for y in range(max(0, y1), min(y2+1, self.rows)):
                     self.grid[x][y].append(i)
 
     def point_in_occupied_grid(self, p):
         x, y = self.convert_from_center(p[0], p[1])
         x = int(x/self.x_width)
         y = int(y/self.y_height)
-        return len(self.grid[x][y]) != 0
+        if 0 <= x < self.cols and 0 <= y < self.rows:
+            return len(self.grid[x][y]) != 0
+        else:
+            return False
 
     def point_in_triangle_acc(self, p):
         x, y = self.convert_from_center(p[0], p[1])
         x = int(x/self.x_width)
         y = int(y/self.y_height)
+        if not (0 <= x < self.cols and 0 <= y < self.rows):
+            return None
+
         for i in self.grid[x][y]:
             if self.is_triangle:
                 pts = self.triangles[i].points
@@ -275,33 +282,34 @@ class Grid:
         for x in range(x1+1, x2+1):
             y = m * x * self.x_width + b
             y_grid = int(y / self.y_height)
-            if y1 <= y_grid <= y2 and (len(self.grid[x-1][y_grid]) > 0 or len(self.grid[x][y_grid]) > 0):
-                draw_point = self.convert_to_center(x*self.x_width, y)
-                glColor3f(0, 0, 1)
-                glBegin(GL_LINES)
-                glVertex2f(p1[0], p1[1])
-                glVertex2f(p2[0], p2[1])
-                glEnd()
-                glBegin(GL_POINTS)
-                glVertex2f(draw_point[0], draw_point[1])
-                glEnd()
-                return True
+            if 1 <= x < self.cols and 0 <= y_grid < self.rows:
+                if y1 <= y_grid <= y2 and (len(self.grid[x-1][y_grid]) > 0 or len(self.grid[x][y_grid]) > 0):
+                    draw_point = self.convert_to_center(x*self.x_width, y)
+                    glColor3f(0, 0, 1)
+                    glBegin(GL_LINES)
+                    glVertex2f(p1[0], p1[1])
+                    glVertex2f(p2[0], p2[1])
+                    glEnd()
+                    glBegin(GL_POINTS)
+                    glVertex2f(draw_point[0], draw_point[1])
+                    glEnd()
+                    return True
 
         for y in range(y1+1, y2+1):
             x = (y * self.y_height - b)/m
             x_grid = int(x / self.x_width)
-            if x1 <= x_grid <= x2 and (len(self.grid[x_grid][y-1]) > 0 or len(self.grid[x_grid][y]) > 0):
-                print 'here2', x, y
-                draw_point = self.convert_to_center(x, y*self.y_height)
-                glColor3f(0, 1, 1)
-                glBegin(GL_LINES)
-                glVertex2f(p1[0], p1[1])
-                glVertex2f(p2[0], p2[1])
-                glEnd()
-                glBegin(GL_POINTS)
-                glVertex2f(draw_point[0], draw_point[1])
-                glEnd()
-                return True
+            if 0 <= x_grid < self.cols and 1 <= y < self.rows:
+                if x1 <= x_grid <= x2 and (len(self.grid[x_grid][y-1]) > 0 or len(self.grid[x_grid][y]) > 0):
+                    draw_point = self.convert_to_center(x, y*self.y_height)
+                    glColor3f(0, 1, 1)
+                    glBegin(GL_LINES)
+                    glVertex2f(p1[0], p1[1])
+                    glVertex2f(p2[0], p2[1])
+                    glEnd()
+                    glBegin(GL_POINTS)
+                    glVertex2f(draw_point[0], draw_point[1])
+                    glEnd()
+                    return True
 
         glColor3f(0, 0, 0)
         glBegin(GL_LINES)

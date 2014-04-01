@@ -17,6 +17,14 @@ import cProfile
 import numpy as np
 import brush
 
+import wx
+try:
+    from wx import glcanvas
+    haveGLCanvas = True
+except ImportError:
+    haveGLCanvas = False
+    print 'FAILED TO IMPORT'
+
 
 # Some api in the chain is translating the keystrokes to this octal string
 # so instead of saying: ESCAPE = 27, we use the following.
@@ -24,8 +32,6 @@ ESCAPE = '\033'
 
 window = 0
 
-lastX = 0
-lastY = 0
 
 brushWidth = 10
 
@@ -37,6 +43,8 @@ class Window:
         self.height = height
         self.zoom_width = zoom_width
         self.zoom_height = zoom_height
+        self.original_width = width
+        self.original_height = height
         self.center_x = center_x
         self.center_y = center_y
 
@@ -57,7 +65,13 @@ class Painter:
     def __init__(self, window):
         self.mouse = Mouse()
         self.window = window
-        self.brush = brush.Brush(50, 100, window, (0,0,1,0.5), 100)
+        
+        self.hardnessSize = 25
+        self.size = 25
+        self.opacity = .5
+        self.color = (0, 0, 0, self.opacity)
+
+        self.brush = brush.Brush(self.size, 100, window, self.color, self.hardnessSize)
         self.next_clear_stroke = False
         self.draw_outlines = False
         self.currentScale = 1
@@ -65,8 +79,8 @@ class Painter:
         self.zooming = False
         self.width = 0
         self.height = 0
-        self.fuzzy = 1
-        self.transparent = .5
+
+
 
     def output(self, x, y, text):
         glRasterPos2f(x, y, 0)
@@ -80,6 +94,7 @@ class Painter:
             height=1
         self.window.width = width
         self.window.height = height
+        
         glViewport(0, 0, width, height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -107,10 +122,34 @@ class Painter:
         self.window.center_x = self.window.center_x + preX
         self.window.center_y = self.window.center_y - preY
 
+        if (self.window.center_x - self.window.zoom_width/2 < -self.window.original_width/2):
+            self.window.center_x = -self.window.original_width/2 + self.window.zoom_width/2
+        if (self.window.center_x + self.window.zoom_width/2 > self.window.original_width/2):
+            self.window.center_x = self.window.original_width/2 - self.window.zoom_width/2
+        if (self.window.center_y - self.window.zoom_height/2 < -self.window.original_height/2):
+            self.window.center_y = -self.window.original_height/2 + self.window.zoom_height/2
+        if (self.window.center_y + self.window.zoom_height/2 > self.window.original_height/2):
+            self.window.center_y = self.window.original_height/2 - self.window.zoom_height/2
+
+        if (self.window.zoom_width > self.window.original_width or 
+            self.window.zoom_height > self.window.original_height):
+            self.window.zoom_width = self.window.original_width
+            self.window.zoom_height = self.window.original_height
+            self.window.center_x = 0
+            self.window.center_y = 0
 
 
+    def draw_triangles(self, canvas):
 
-    def draw_triangles(self):
+        # texID = glGenTextures(1)
+        # glBindTexture(GL_TEXTURE_2D, texID)
+        # glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA8, self.window.width, self.window.height, False )
+
+        # fboID = glGenFramebuffers(1)
+        # glBindFramebuffer(GL_FRAMEBUFFER, fboID)
+        # glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, texID, 0)
+
+
 
         glClear(GL_COLOR_BUFFER_BIT)
 
@@ -127,7 +166,7 @@ class Painter:
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        glEnable(GL_MULTISAMPLE)
+        # glEnable(GL_MULTISAMPLE)
         """
         glBegin(GL_TRIANGLES)
         glColor3f(0,0,0)
@@ -172,115 +211,148 @@ class Painter:
 
         (xcoord, ycoord) = self.window.to_world_coords(self.mouse.mouseX, self.mouse.mouseY)
         self.output(10, 10, 'X, Y: '+str(xcoord)+' '+str(ycoord))
+  
+        # glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
+        # glBindFramebuffer(GL_READ_FRAMEBUFFER, fboID)
+        # glDrawBuffer(GL_BACK)
+        # glBlitFramebuffer(0, 0, self.window.width, self.window.height, 0, 0, self.window.width, self.window.height, GL_COLOR_BUFFER_BIT, GL_NEAREST)
 
-        glutSwapBuffers()
-        glDisable(GL_MULTISAMPLE)
+        canvas.SwapBuffers()
+        # glDisable(GL_MULTISAMPLE)
 
     # The function called whenever a key is pressed. Note the use of Python tuples to pass in: (key, x, y)  
-    def keyPressed(self, *args):
+    def keyPressed(self, evt):
         # If escape is pressed, kill everything.
-        if args[0] == ESCAPE:
-            glutDestroyWindow(window)
+        code = evt.GetKeyCode()
+        if not evt.ShiftDown() and 65 <= code <= 90:
+            code += 32
+        key = chr(code)
+
+        if key == ESCAPE:
             sys.exit()
-        if args[0] == 'o':
+        if key == 'o':
             out_name = raw_input('Open File: ')
             if os.path.exists(out_name):
                 self.brush.load(out_name, self.window)
-        if args[0] == 's':
+        if key == 's':
             out_name = raw_input('Save File: ')
             self.brush.save(out_name)
 
-        if args[0] == 'a':
+        if key == 'a':
             out_name = 'last_stroke.txt'
             if os.path.exists(out_name):
                 self.brush.load(out_name, self.window)
 
-        if args[0] == 'S':
+        if key == 'S':
             shutil.move('hold.txt', 'last_stroke_action.txt')
 
-        if args[0] == 'A':
+        if key == 'A':
             out_name = 'last_stroke_action.txt'
             if os.path.exists(out_name):
                 self.brush.load_action(out_name, self.window)
 
-        if args[0] == ']':
+        if key == ']':
             new_size = self.brush.get_size()+5
-            self.brush.set_size(new_size, new_size*2*self.fuzzy)
-        if args[0] == '[':
+            #self.brush.set_size(new_size, new_size*2*self.fuzzy)
+        if key == '[':
             new_size = self.brush.get_size()-5
-            self.brush.set_size(new_size, new_size*2*self.fuzzy)
+            #self.brush.set_size(new_size, new_size*2*self.fuzzy)
 
-        if args[0] == 'r':
+        if key == 'r':
             self.brush.change_color((1,0,0,self.transparent))
-        if args[0] == 'g':
+        if key == 'g':
             self.brush.change_color((0,1,0,self.transparent))
-        if args[0] == 'b':
+        if key == 'b':
             self.brush.change_color((0,0,1,self.transparent))
-        if args[0] == 'l':
+        if key == 'l':
             self.brush.change_color((0,0,0,self.transparent))
-        if args[0] == 't':
+        if key == 't':
             if self.transparent < 1:
                 self.transparent = 1
             else:
                 self.transparent = .5
             self.brush.change_color([self.brush.color[0], self.brush.color[1], self.brush.color[2], self.transparent])
-        if args[0] == 'c':
+        if key == 'c':
             self.brush.cycle(1)
-        if args[0] == 'x':
+        if key == 'x':
             self.brush.cycle(-1)
-        if args[0] == 'z':
+        if key == 'z':
             self.zooming = True
-        if args[0] == 'q':
+        if key == 'q':
             self.brush.simplify()
-        if args[0] == 'f':
-            if self.fuzzy == 0:
-                self.fuzzy = 1
-            else:
-                self.fuzzy = 0
-            size = self.brush.get_size()
-            self.brush.set_size(size, size*2*self.fuzzy)
 
-    def keyReleased(self, *args):
-        if args[0] == 'z':
+        # if key == 'f':
+        #     if self.fuzzy == 0:
+        #         self.fuzzy = 1
+        #     else:
+        #         self.fuzzy = 0
+        #     size = self.brush.get_size()
+        #     self.brush.set_size(size, size*2*self.fuzzy)
+
+    def setColor(self, color, integer=True):
+        if integer:
+            self.color = (color[0]/255.0, color[1]/255.0, color[2]/255.0, self.opacity)
+        else:
+            self.color = (color[0], color[1], color[2], self.opacity)
+
+        self.brush.change_color(self.color)
+
+    def setShape(self, numSides):
+        self.brush.set_sides(numSides)
+
+    def setSize(self, size):
+        self.size = size
+        self.brush.set_size(self.size, self.hardnessSize)
+
+    def setHardnessSize(self, size):
+        self.hardnessSize = size
+        self.brush.set_size(self.size, self.hardnessSize)
+
+    def setOpacity(self, opacity):
+        self.opacity = opacity
+        self.color = (self.color[0], self.color[1], self.color[2], self.opacity)
+        self.brush.change_color(self.color)
+
+    def keyReleased(self, evt):
+        key = evt.GetKeyCode()
+        if key == 'z':
             self.zooming = False
 
     # The function called whenever the mouse is pressed. Note the use of Python tuples to pass in: (key, x, y)
-    def mousePressed(self, button, state, x, y):
+    def mousePressed(self, evt):
 
-        global lastX
-        global lastY
+        x, y = evt.GetPosition()
 
         if self.zooming:
-            if button == GLUT_LEFT_BUTTON:
-                if(state == GLUT_UP):
-                    self.zoom(2, x, y)
-            if button == GLUT_RIGHT_BUTTON:
-                if(state == GLUT_UP):
-                    self.zoom(.5, x, y)
+            if evt.LeftUp():
+                self.zoom(2, x, y)
+            if evt.RightUp():
+                self.zoom(.5, x, y)
         else:
-            if button == GLUT_LEFT_BUTTON:
-                if(state == GLUT_DOWN):
-                    lastX = x
-                    lastY = y
-                    self.mouse.mouseDown = True
-                    self.brush.new_stroke(self.mouse, self.window)
-                else:
-                    self.next_clear_stroke = True
-                    self.mouse.mouseDown = False
+            if evt.LeftDown():
+                self.lastX = x
+                self.lastY = y
+                self.mouse.mouseDown = True
+                self.brush.new_stroke(self.mouse, self.window)
+            if evt.LeftUp():
+                self.next_clear_stroke = True
+                self.mouse.mouseDown = False
 
-            if button == GLUT_RIGHT_BUTTON:
-                if(state == GLUT_DOWN):
-                    self.draw_outlines = not self.draw_outlines
+            if evt.RightDown():
+                self.draw_outlines = not self.draw_outlines
 
 
-    def mouseWheel(self, button, dir, x, y):
-        if dir > 0:
+    def mouseWheel(self, evt):
+        direction = evt.GetWheelRotation()
+        x = evt.GetX()
+        y = evt.GetY()
+        if direction > 0:
             # Scroll Up
-            self.zoom(2)
+            self.zoom(1.25, x, y)
 
-        if dir < 0:
+        if direction < 0:
             # Scroll Down
-            self.zoom(.5)
+            self.zoom(.8, x, y)
 
     def removelines(self, points, lines, removeNumber):
         points = np.delete(points, removeNumber)
@@ -294,17 +366,16 @@ class Painter:
         return points, lines
 
     # The function called whenever a key is pressed. Note the use of Python tuples to pass in: (key, x, y)  
-    def mouseMoved(self, x, y):
+    def mouseMoved(self, evt):
+        x, y = evt.GetPosition()
 
-        global lastX
-        global lastY
         if self.mouse.mouseDown:
-            diffX = x - lastX
-            diffY = y - lastY
+            diffX = x - self.lastX
+            diffY = y - self.lastY
             if abs(diffX) + abs(diffY) > 5:
                 self.brush.stamp (self.mouse, self.window)
-                lastX = x
-                lastY = y
+                self.lastX = x
+                self.lastY = y
         self.mouse.mouseX = x
         self.mouse.mouseY = y
 
@@ -375,5 +446,297 @@ def main():
 # Print message to console, and kick off the main to get it rolling.
 print "Hit ESC key to quit."
 
-main()
+
+class ButtonPanel(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent, -1)
+
+        box = wx.BoxSizer(wx.VERTICAL)
+        box.Add((20, 30))
+
+        frame = wx.Frame(None, -1, "Canvas", size=(1280,960), pos=(200, 200))
+        self.paintCanvas = PaintCanvas(frame) # CubeCanvas(frame) or ConeCanvas(frame); frame passed to MyCanvasBase
+        self.paintCanvas.Bind(wx.EVT_MOUSEWHEEL, self.paintCanvas.OnMouseWheel)
+        #self.paintCanvas.InitGL()
+
+        self.colorPanel = wx.Panel(self, -1, size=(100, 100))
+        box.Add(self.colorPanel, 0, wx.ALIGN_CENTER|wx.ALL, 15)
+        self.colorPanel.Bind(wx.EVT_LEFT_DOWN, self.OnColorButton)
+        self.lastColor = (255, 0, 0)
+        self.colorPanel.SetBackgroundColour(self.lastColor)
+
+        triangleImage = wx.Image("triangleIcon.jpg", wx.BITMAP_TYPE_ANY).ConvertToBitmap()
+        self.triangleButton = wx.BitmapButton(self, 1, bitmap = triangleImage, size=(50, 50))
+        sqaureImage = wx.Image("squareIcon.jpg", wx.BITMAP_TYPE_ANY).ConvertToBitmap()
+        self.squareButton = wx.BitmapButton(self, 2, bitmap = sqaureImage, size=(50, 50))
+        circleImage = wx.Image("circleIcon.jpg", wx.BITMAP_TYPE_ANY).ConvertToBitmap()
+        self.circleButton = wx.BitmapButton(self, 3, bitmap = circleImage, size=(50, 50))
+
+        shapeButtonBox = wx.BoxSizer(wx.HORIZONTAL)
+
+        shapeButtonBox.Add(self.triangleButton, -1, wx.ALIGN_CENTER)
+        shapeButtonBox.Add(self.squareButton, -1, wx.ALIGN_CENTER)
+        shapeButtonBox.Add(self.circleButton, -1, wx.ALIGN_CENTER)
+        
+        self.triangleButton.Bind(wx.EVT_BUTTON, self.paintCanvas.OnChangeShape, id=1)
+        self.squareButton.Bind(wx.EVT_BUTTON, self.paintCanvas.OnChangeShape, id=2)
+        self.circleButton.Bind(wx.EVT_BUTTON, self.paintCanvas.OnChangeShape, id=3)
+
+        box.Add(shapeButtonBox, -1, wx.EXPAND)
+
+        
+        self.sizeSlider = wx.Slider(self, 4, 25, 5, 100)
+        self.sizeText = wx.StaticText(self, -1, 'Size: '+str(self.sizeSlider.GetValue()))
+        # self.paintCanvas.setSize(self.sizeSlider.GetValue())
+
+        self.sizeSlider.Bind(wx.EVT_SLIDER, self.OnChangeSize, id=4)
+        box.Add(self.sizeText, -1, wx.ALIGN_CENTER)
+        box.Add(self.sizeSlider)
+
+
+        self.hardnessSizeSlider = wx.Slider(self, 5, 25, 0, 100)
+        self.hardnessSizeText = wx.StaticText(self, -1, 'Hardness: '+str(self.hardnessSizeSlider.GetValue()))
+        # self.paintCanvas.setHardnessSize(self.hardnessSizeSlider.GetValue())
+        
+        self.hardnessSizeSlider.Bind(wx.EVT_SLIDER, self.OnChangeHardnessSize, id=5)
+        box.Add(self.hardnessSizeText, -1, wx.ALIGN_CENTER)
+        box.Add(self.hardnessSizeSlider)
+
+
+        self.opacitySlider = wx.Slider(self, 6, 50, 0, 100)
+        self.opacityText = wx.StaticText(self, -1, 'Opacity: '+str(self.opacitySlider.GetValue()))
+        # self.paintCanvas.setOpacity(self.opacitySlider.GetValue())
+        
+        self.opacitySlider.Bind(wx.EVT_SLIDER, self.OnChangeOpacity, id=6)
+        box.Add(self.opacityText, -1, wx.ALIGN_CENTER)
+        box.Add(self.opacitySlider)
+
+        self.SetAutoLayout(True)
+        self.SetSizer(box)
+
+        
+        frame.Show(True)
+        self.lastColor = None
+
+    def OnColorButton(self, evt):
+        if not self.lastColor is None:
+            data = wx.ColourData()
+            data.SetColour(wx.Colour(self.lastColor[0], self.lastColor[1], self.lastColor[2]))
+            dlg = wx.ColourDialog(self, data)
+        else:
+            dlg = wx.ColourDialog(self)
+
+        # Ensure the full colour dialog is displayed, 
+        # not the abbreviated version.
+        dlg.GetColourData().SetChooseFull(True)
+ 
+        if dlg.ShowModal() == wx.ID_OK:
+            self.lastColor = dlg.GetColourData().GetColour().Get()
+            print 'data', self.lastColor
+            self.paintCanvas.setColor(self.lastColor)
+            self.colorPanel.SetBackgroundColour(self.lastColor)
+            self.Refresh()
+ 
+        dlg.Destroy()
+
+    def OnChangeSize(self, evt):
+        self.paintCanvas.setSize(self.sizeSlider.GetValue())
+        self.sizeText.SetLabel('Size: '+str(self.sizeSlider.GetValue()))
+
+    def OnChangeHardnessSize(self, evt):
+        self.paintCanvas.setHardnessSize(self.hardnessSizeSlider.GetValue())
+        self.hardnessSizeText.SetLabel('Hardness: '+str(self.hardnessSizeSlider.GetValue()))
+
+    def OnChangeOpacity(self, evt):
+        self.paintCanvas.setOpacity(self.opacitySlider.GetValue())
+        self.opacityText.SetLabel('Opacity: '+str(self.opacitySlider.GetValue()))
+
+
+class MyCanvasBase(glcanvas.GLCanvas):
+    def __init__(self, parent):
+        glcanvas.GLCanvas.__init__(self, parent, -1)
+        self.init = False
+        self.context = glcanvas.GLContext(self)
+
+        
+        # initial mouse position
+        self.lastx = self.x = 30
+        self.lasty = self.y = 30
+        self.size = None
+        self.Bind(wx.EVT_ERASE_BACKGROUND, self.OnEraseBackground)
+        self.Bind(wx.EVT_SIZE, self.OnSize)
+        self.Bind(wx.EVT_PAINT, self.OnPaint)
+        self.Bind(wx.EVT_IDLE, self.OnPaint)
+        self.Bind(wx.EVT_LEFT_DOWN, self.OnMouseDown)
+        self.Bind(wx.EVT_LEFT_UP, self.OnMouseUp)
+        self.Bind(wx.EVT_RIGHT_DOWN, self.OnMouseDown)
+        self.Bind(wx.EVT_RIGHT_UP, self.OnMouseUp)
+        self.Bind(wx.EVT_MOTION, self.OnMouseMotion)
+        self.Bind(wx.EVT_KEY_DOWN, self.OnKeyDown)
+        self.Bind(wx.EVT_KEY_UP, self.OnKeyUp)
+
+        
+
+    def OnEraseBackground(self, event):
+        pass # Do nothing, to avoid flashing on MSW.
+
+    def OnSize(self, event):
+        self.OnSize(event)
+
+    def DoSetViewport(self):
+        size = self.size = self.GetClientSize()
+        self.SetCurrent(self.context)
+        glViewport(0, 0, size.width, size.height)
+        
+    def OnPaint(self, event):
+        graphicsContext = wx.GraphicsContext.Create(self)
+        #print 'antialiasing: ', graphicsContext.SetAntialiasMode(wx.ANTIALIAS_DEFAULT)
+        #self.SetCurrent(graphicsContext)
+        self.SetCurrent(self.context)
+        if not self.init:
+            self.InitGL()
+            self.init = True
+        self.OnDraw()
+
+    def OnMouseDown(self, evt):
+        self.OnMouseDown(evt)
+
+    def OnMouseUp(self, evt):
+        self.OnMouseUp(evt)
+
+    def OnMouseMotion(self, evt):
+        self.OnMouseMotion(evt)
+
+    def OnKeyUp(self, evt):
+        self.OnKeyUp(evt)
+
+    def OnKeyDown(self, evt):
+        self.OnKeyDown(evt)
+
+class PaintCanvas(MyCanvasBase):
+    def InitGL(self):
+        # Select type of Display mode:   
+        #  Double buffer 
+        #  RGBA color
+        # Alpha components supported 
+        # glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_MULTISAMPLE)
+
+        # # get a 640 x 480 window 
+        # glutInitWindowSize(window_width, window_height)
+
+        # # the window starts at the upper left corner of the screen 
+        # glutInitWindowPosition(0, 0)
+
+        # # Okay, like the C version we retain the window id to use when closing, but for those of you new
+        # # to Python (like myself), remember this assignment would make the variable local and not global
+        # # if it weren't for the global declaration at the start of main.
+        # window = glutCreateWindow("Painter")
+
+
+        # # Uncomment this line to get full screen.
+        # #glutFullScreen()
+
+        # # Register the function called when the keyboard is pressed.  
+        # glutKeyboardFunc (painter.keyPressed)
+        # glutKeyboardUpFunc (painter.keyReleased)
+        print 'initialized'
+        window_width = 1280
+        window_height = 960
+        window_params = Window(window_width, window_height, window_width, window_height, 0, 0)
+
+        out_name = "last_stroke.txt"#raw_input("FileName: ")
+        self.painter = Painter(window_params)
+        self.painter.init()
+
+    def setColor(self, color):
+        print color
+        self.painter.setColor(color)
+
+    def OnChangeShape(self, evt):
+        print 'id', evt.GetId()
+        if evt.GetId() == 1:
+            self.painter.setShape(3)
+        elif evt.GetId() == 2:
+            self.painter.setShape(4)
+        elif evt.GetId() == 3:
+            self.painter.setShape(100)
+
+    def setSize(self, size):
+        self.painter.setSize(size)
+
+    def setHardnessSize(self, size):
+        self.painter.setHardnessSize(size)
+
+    def setOpacity(self, opacity):
+        self.painter.setOpacity(opacity/100.0)
+
+    def OnDraw(self):
+        self.painter.draw_triangles(self)
+
+    def OnMouseDown(self, evt):
+        self.painter.mousePressed(evt)
+
+    def OnMouseUp(self, evt):
+        self.painter.mousePressed(evt)
+
+    def OnMouseMotion(self, evt):
+        self.painter.mouseMoved(evt)
+
+    def OnMouseWheel(self, evt):
+        self.painter.mouseWheel(evt)
+    
+    def OnSize(self, evt):
+        width, height = evt.GetSize()
+        self.painter.resize(width, height)
+
+    def OnKeyUp(self, evt):
+        print 'here key up'
+        self.painter.keyReleased(evt)
+
+    def OnKeyDown(self, evt):
+        print 'here key down'
+        self.painter.keyPressed(evt)
+
+class RunDemoApp(wx.App):
+    def __init__(self):
+        wx.App.__init__(self, redirect=False)
+
+    def OnInit(self):
+        frame = wx.Frame(None, -1, "Triangle Painter", pos=(30,100),
+                        style=wx.DEFAULT_FRAME_STYLE, name="run a sample")
+        frame.CreateStatusBar()
+
+        # menuBar = wx.MenuBar()
+        # menu = wx.Menu()
+        # item = menu.Append(wx.ID_EXIT, "E&xit\tCtrl-Q", "Exit demo")
+        # self.Bind(wx.EVT_MENU, self.OnExitApp, item)
+        # menuBar.Append(menu, "&File")
+        
+        # frame.SetMenuBar(menuBar)
+        frame.Show(True)
+        frame.Bind(wx.EVT_CLOSE, self.OnCloseFrame)
+
+        win = ButtonPanel(frame)
+
+        # set the frame to a good size for showing the two buttons
+        frame.SetSize((150, 400))
+        win.SetFocus()
+        self.window = win
+        frect = frame.GetRect()
+
+        self.SetTopWindow(frame)
+        self.frame = frame
+        return True
+        
+    def OnExitApp(self, evt):
+        self.frame.Close(True)
+
+    def OnCloseFrame(self, evt):
+        sys.exit(0)
+        evt.Skip()
+
+app = RunDemoApp()
+app.MainLoop()
+
+#main()
 

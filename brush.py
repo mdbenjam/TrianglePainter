@@ -34,6 +34,8 @@ class Brush:
         self.composite_lines = []
         self.current_quads = []
         self.fall_off_current_quads = []
+        self.current_poly = []
+        self.fall_off_current_poly = []
         self.color = color
         self.brush_radius = brush_radius
         self.fall_off_radius = fall_off_radius
@@ -45,7 +47,7 @@ class Brush:
         self.show_index = 0
 
         self.brushPoints = self.make_brush(self.num_sides, self.brush_radius)
-        self.fall_off_brush_points = self.make_brush(self.num_sides, self.fall_off_radius)
+        self.fall_off_brush_points = self.make_brush(self.num_sides, self.fall_off_radius+self.brush_radius)
 
         self.window = window
 
@@ -91,6 +93,9 @@ class Brush:
 
         self.setup_vbo()
 
+    def update_brushes(self):
+        self.brushPoints = self.make_brush(self.num_sides, self.brush_radius)
+        self.fall_off_brush_points = self.make_brush(self.num_sides, self.fall_off_radius+self.brush_radius)
 
     def make_brush(self, num_sides, brush_radius):
         brushPoints = []
@@ -114,15 +119,19 @@ class Brush:
     def set_size(self, brush_radius, fall_off_radius):
         self.brush_radius = brush_radius
         self.fall_off_radius = fall_off_radius
-        self.brushPoints = self.make_brush(self.num_sides, self.brush_radius)
-        self.fall_off_brush_points = self.make_brush(self.num_sides, self.fall_off_radius)
+        self.update_brushes()
+
+    def set_sides(self, num_sides):
+        self.num_sides = num_sides
+        print 'num_sides', self.num_sides
+        self.update_brushes()
 
     def draw_cursor(self, mouse, window):
         (x, y) = window.to_world_coords(float(mouse.mouseX), float(mouse.mouseY))
         glBegin(GL_POLYGON)
         glColor4f(self.color[0]*2, self.color[1]*2, self.color[2]*2, self.color[3])
         for p in self.fall_off_brush_points:
-            glVertex2f(x + p[0], y + p[1])
+            glVertex2f(x + p[0], y - p[1])
 
         glEnd()
 
@@ -130,7 +139,7 @@ class Brush:
         glColor4f(self.color[0], self.color[1], self.color[2], self.color[3])
 
         for p in self.brushPoints:
-            glVertex2f(x + p[0], y + p[1])
+            glVertex2f(x + p[0], y - p[1])
         glEnd()
 
 
@@ -145,6 +154,16 @@ class Brush:
         for q in self.fall_off_current_quads:
             for p in q:
                 glVertex2f(p[0], p[1])
+        glEnd()
+        glBegin(GL_POLYGON)
+
+        for q in self.fall_off_current_poly:
+            for p in q:
+                glVertex2f(p[0], p[1])
+
+        glEnd()
+
+        glBegin(GL_QUADS)
 
         if black:
             glColor4f(0,0,0,1)
@@ -152,6 +171,13 @@ class Brush:
             glColor4f(self.color[0], self.color[1], self.color[2], self.color[3])
 
         for q in self.current_quads:
+            for p in q:
+                glVertex2f(p[0], p[1])
+
+        glEnd()
+        glBegin(GL_POLYGON)
+
+        for q in self.current_poly:
             for p in q:
                 glVertex2f(p[0], p[1])
 
@@ -320,19 +346,28 @@ class Brush:
         self.last_points = deque([])
         self.current_quads = []
         self.fall_off_current_quads = []
-        self.currentPolys = []
+        self.current_poly = []
+        self.fall_off_current_poly = []
         self.stroke_over = False
         points = []
         count = 0
         zoom = window.width/window.zoom_width
-        """
         for p in self.brushPoints:
             count = count + 1
             point = window.to_world_coords(mouse.mouseX + p[0]*zoom, mouse.mouseY + p[1]*zoom)
             #self.addNotCoveredPoint(point, count==len(self.brushPoints))
             points.append(point)
-        self.current_quads.append(points)
-        """
+        self.current_poly.append(points)
+
+        points = []
+        count = 0
+        for p in self.fall_off_brush_points:
+            count = count + 1
+            point = window.to_world_coords(mouse.mouseX + p[0]*zoom, mouse.mouseY + p[1]*zoom)
+            #self.addNotCoveredPoint(point, count==len(self.brushPoints))
+            points.append(point)
+        self.fall_off_current_poly.append(points)
+        
         self.lastMouse = copy.deepcopy(mouse)
 
 
@@ -461,7 +496,7 @@ class Brush:
                     first_index = len(self.triangle_points)-1
 
                     #TODO: Check for closed
-                    USE_EVERY = 5
+                    USE_EVERY = 20
 
 
                     current_count = 0
@@ -543,7 +578,7 @@ class Brush:
                             last_five_points = []
                             last_points = []
                     lines.append([len(self.triangle_points)-1, first_index])
-                    print 'iterations', iterations, len(c)
+                    #print 'iterations', iterations, len(c)
             iterate_pruning()
 
         if self.fall_off_radius == 0:
@@ -589,6 +624,7 @@ class Brush:
 
         first_triangulation = triangulation_one()
         first_triangle_indicies = first_triangulation['triangles']
+        print 'fti', first_triangle_indicies
 
         starting_value = len(self.composite_points)
 
@@ -623,6 +659,7 @@ class Brush:
                 t = geometry.TrianglePoint(p,regions, composite_point_index=len(self.composite_points))
                 self.composite_points.append(t)
                 index = index + 1
+            print 'added this many indicies to composite', index
 
         add_points_to_composite()
 
@@ -633,6 +670,7 @@ class Brush:
             t = first_triangulation['vertices'][i]
             t2 = []
             for j in range(len(i)):
+                print 'trying to access', i[j]
                 t2.append(self.composite_points[starting_value+i[j]])
             first_triangles.append(geometry.Triangle(t2))
 
@@ -696,6 +734,7 @@ class Brush:
                 redo_segments.append((index1, index2))
                 # TODO: Maybe causing bad topology crashes
                 if not (l[0] in boundary_points and l[1] in boundary_points):
+                    print 'maybe made bad topology!'
                     seg_set.remove(l)
 
         redo_starting_value = len(redo_points)
@@ -817,15 +856,15 @@ class Brush:
                 hole_array[i, 1] = p[1]
                 i = i + 1
 
-            print 'hole_array', hole_array
+            # print 'hole_array', hole_array
 
             print 'before triangulation'
             if i == 0:
                 A = dict(vertices = verts, segments = line_array)#, holes = hole_array)
             else:
                 A = dict(vertices = verts, segments = line_array, holes = hole_array)
-            print self.composite_points
-            print self.composite_lines
+            # print self.composite_points
+            # print self.composite_lines
             ret = triangle.triangulate(A, 'p'), pre_extra_seg_length
             print 'after triangulation'
             return ret
@@ -1203,6 +1242,8 @@ class Brush:
 
         self.current_quads = []
         self.fall_off_current_quads = []
+        self.current_poly = []
+        self.fall_off_current_poly = []
         if debug:
             self.save('last_stroke.txt')
 
