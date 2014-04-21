@@ -1,7 +1,7 @@
 class Stroke:
     def __init__(self):
         self.mouse = []
-        self.window = []
+        self.window = None
         
         self.color = None
         self.hardness = None
