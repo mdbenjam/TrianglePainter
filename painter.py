@@ -698,8 +698,8 @@ class ButtonPanel(wx.Panel):
 class MyCanvasBase(glcanvas.GLCanvas):
     def __init__(self, parent, panel):
         glcanvas.GLCanvas.__init__(self, parent, -1)
-        self.InitGL()
-        self.init = True
+        #self.InitGL()
+        self.init = False
         self.context = glcanvas.GLContext(self)
 
         
