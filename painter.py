@@ -784,6 +784,7 @@ class PaintCanvas(MyCanvasBase):
         #  Double buffer 
         #  RGBA color
         # Alpha components supported 
+        glutInit()
         # glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA | GLUT_MULTISAMPLE)
 
         # # get a 640 x 480 window 
