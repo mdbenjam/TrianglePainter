@@ -510,7 +510,7 @@ class ButtonPanel(wx.Panel):
         box = wx.BoxSizer(wx.VERTICAL)
         box.Add((20, 30))
 
-        frame = wx.Frame(None, -1, "Canvas", size=(1280,750), pos=(200, 200), style=wx.DEFAULT_FRAME_STYLE ^ wx.RESIZE_BORDER)
+        frame = wx.Frame(None, -1, "Canvas", size=(1280,960), pos=(200, 200), style=wx.DEFAULT_FRAME_STYLE ^ wx.RESIZE_BORDER)
         self.paintCanvas = PaintCanvas(frame, self) # CubeCanvas(frame) or ConeCanvas(frame); frame passed to MyCanvasBase
         self.paintCanvas.Bind(wx.EVT_MOUSEWHEEL, self.paintCanvas.OnMouseWheel)
         #self.paintCanvas.InitGL()
@@ -805,7 +805,7 @@ class PaintCanvas(MyCanvasBase):
         # glutKeyboardFunc (painter.keyPressed)
         # glutKeyboardUpFunc (painter.keyReleased)
         window_width = 1280
-        window_height = 750
+        window_height = 960
         window_params = geometry.Window(window_width, window_height, window_width, window_height, 0, 0)
 
         out_name = "last_stroke.txt"#raw_input("FileName: ")
@@ -884,7 +884,8 @@ class PaintCanvas(MyCanvasBase):
     
     def OnSize(self, evt):
         width, height = evt.GetSize()
-        self.painter.resize(width, height)
+        if not self.painter is None:
+            self.painter.resize(width, height)
 
     def OnKeyUp(self, evt):
         self.painter.keyReleased(evt)
